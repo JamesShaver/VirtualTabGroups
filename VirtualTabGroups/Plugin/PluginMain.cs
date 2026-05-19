@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using RGiesecke.DllExport;
 using VirtualTabGroups.Core;
 using VirtualTabGroups.Plugin.Npp;
 using VirtualTabGroups.Plugin.UI;
@@ -9,8 +10,9 @@ using VirtualTabGroups.Plugin.UI;
 namespace VirtualTabGroups.Plugin
 {
     /// <summary>
-    /// Managed plugin orchestrator. Called by VirtualTabGroups.Loader's C++/CLI bridge
-    /// from the unmanaged Notepad++ entry-point exports.
+    /// Plugin entry point. Exports the six unmanaged functions required by Notepad++
+    /// directly from this managed DLL via RGiesecke.DllExport IL post-processing,
+    /// eliminating the need for a separate C++/CLI bridge loader.
     /// </summary>
     public static class PluginMain
     {
@@ -31,15 +33,26 @@ namespace VirtualTabGroups.Plugin
         private static FuncItem[] _funcItems;
         private static IntPtr _funcItemsPtr = IntPtr.Zero;
 
+        // Stable HGlobal pointer for the plugin name string. Notepad++ holds this pointer
+        // for the lifetime of the process; a managed string reference would be moved/collected.
+        private static IntPtr _namePtr = IntPtr.Zero;
+
         // Cached delegates so GC doesn't collect them between Notepad++ menu invocations.
         private static Action _showPanelDelegate;
         private static Action _aboutDelegate;
 
-        // ---- Entry points called by the C++/CLI bridge ----
+        // ---- Notepad++ unmanaged entry points ----
 
-        public static bool IsUnicode() => true;
+        /// <summary>
+        /// Tells Notepad++ this plugin handles Unicode (UTF-16). Must return a 4-byte
+        /// Windows BOOL (not a 1-byte C# bool) to match the BOOL ABI Notepad++ expects.
+        /// </summary>
+        [DllExport("isUnicode", CallingConvention = CallingConvention.Cdecl)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static bool isUnicode() => true;
 
-        public static void SetInfo(NppData nppData)
+        [DllExport("setInfo", CallingConvention = CallingConvention.Cdecl)]
+        public static void setInfo(NppData nppData)
         {
             _nppData = nppData;
 
@@ -58,21 +71,34 @@ namespace VirtualTabGroups.Plugin
             _stateStore = new StateStore(stateFilePath, _observer);
         }
 
-        public static string GetName() => PluginName;
+        /// <summary>
+        /// Returns a stable wchar_t* pointer to the plugin name. Notepad++ holds this pointer
+        /// for the process lifetime so we must keep it in unmanaged HGlobal memory, not on the
+        /// managed heap where the GC could move or collect it.
+        /// </summary>
+        [DllExport("getName", CallingConvention = CallingConvention.Cdecl)]
+        public static IntPtr getName()
+        {
+            if (_namePtr == IntPtr.Zero)
+                _namePtr = Marshal.StringToHGlobalUni(PluginName);
+            return _namePtr;
+        }
 
         /// <summary>
-        /// Builds the menu items lazily, marshals them into unmanaged memory, returns
-        /// the pointer + count via out parameter. The pointer is held by the C++/CLI bridge
-        /// in a static cache so Notepad++ can keep the pointer for the plugin's lifetime.
+        /// Notepad++ calls getFuncsArray(int* nbF). We receive the pointer as IntPtr and
+        /// write the count into it so Notepad++ knows how many menu items we registered.
         /// </summary>
-        public static IntPtr GetFuncsArray(out int count)
+        [DllExport("getFuncsArray", CallingConvention = CallingConvention.Cdecl)]
+        public static IntPtr getFuncsArray(IntPtr nbFPtr)
         {
             if (_funcItemsPtr == IntPtr.Zero) BuildFuncItems();
-            count = FuncItemCount;
+            if (nbFPtr != IntPtr.Zero)
+                Marshal.WriteInt32(nbFPtr, FuncItemCount);
             return _funcItemsPtr;
         }
 
-        public static void BeNotified(IntPtr notifyCodePtr)
+        [DllExport("beNotified", CallingConvention = CallingConvention.Cdecl)]
+        public static void beNotified(IntPtr notifyCodePtr)
         {
             var notification = (SCNotification)Marshal.PtrToStructure(notifyCodePtr, typeof(SCNotification));
             switch ((NppNotif)notification.nmhdr.code)
@@ -95,7 +121,8 @@ namespace VirtualTabGroups.Plugin
             }
         }
 
-        public static IntPtr MessageProc(uint msg, IntPtr wParam, IntPtr lParam) => IntPtr.Zero;
+        [DllExport("messageProc", CallingConvention = CallingConvention.Cdecl)]
+        public static IntPtr messageProc(uint msg, IntPtr wParam, IntPtr lParam) => IntPtr.Zero;
 
         // ---- State accessors (used by future phases) ----
 
@@ -127,6 +154,20 @@ namespace VirtualTabGroups.Plugin
 
         // ---- Helpers ----
 
+        /// <summary>
+        /// Allocates a ShortcutKey struct in unmanaged memory and returns a pointer to it.
+        /// Returns IntPtr.Zero for a zeroed (no-shortcut) key rather than allocating.
+        /// The pointer is kept alive for the process lifetime — no FreeHGlobal.
+        /// </summary>
+        private static IntPtr AllocShortcutKey(ShortcutKey sk)
+        {
+            if (sk._key == 0 && sk._isCtrl == 0 && sk._isAlt == 0 && sk._isShift == 0)
+                return IntPtr.Zero;
+            IntPtr p = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(ShortcutKey)));
+            Marshal.StructureToPtr(sk, p, false);
+            return p;
+        }
+
         private static void BuildFuncItems()
         {
             _showPanelDelegate = OnShowPanel;
@@ -140,7 +181,7 @@ namespace VirtualTabGroups.Plugin
                 _pFunc = Marshal.GetFunctionPointerForDelegate(_showPanelDelegate),
                 _cmdID = CmdId_ShowPanel,
                 _init2Check = false,
-                _pShKey = new ShortcutKey(ctrl: true, alt: false, shift: true, key: (byte)'T'),
+                _pShKey = AllocShortcutKey(new ShortcutKey(ctrl: true, alt: false, shift: true, key: (byte)'T')),
             };
 
             _funcItems[CmdId_About] = new FuncItem
@@ -149,7 +190,7 @@ namespace VirtualTabGroups.Plugin
                 _pFunc = Marshal.GetFunctionPointerForDelegate(_aboutDelegate),
                 _cmdID = CmdId_About,
                 _init2Check = false,
-                _pShKey = new ShortcutKey(false, false, false, 0),
+                _pShKey = IntPtr.Zero,
             };
 
             int size = Marshal.SizeOf(typeof(FuncItem));
