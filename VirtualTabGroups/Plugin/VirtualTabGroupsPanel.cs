@@ -214,7 +214,28 @@ namespace VirtualTabGroups.Plugin
 
             _stateStore?.MarkDirty(_root, _currentSelectedId);
         }
-        private void OnAddAllOpen(FolderNode targetFolder) { /* Task 27 */ }
+        private void OnAddAllOpen(FolderNode targetFolder)
+        {
+            if (targetFolder == null) return;
+            var paths = PluginMain.GetAllOpenFilePaths();
+            if (paths.Length == 0) return;
+
+            var parentTn = FindByModelId(_tree.Nodes, targetFolder.Id);
+            bool any = false;
+
+            foreach (var path in paths)
+            {
+                var added = TreeMutator.AddFile(targetFolder, path);
+                if (added == null) continue;
+
+                any = true;
+                var tn = BuildTreeNode(added);
+                if (parentTn == null) _tree.Nodes.Add(tn);
+                else parentTn.Nodes.Add(tn);
+            }
+
+            if (any) _stateStore?.MarkDirty(_root, _currentSelectedId);
+        }
         private void OnNewFolder(FolderNode targetFolder) { /* Task 28 */ }
         private void OnRemove(TreeNodeModel target) { /* Task 29 */ }
 

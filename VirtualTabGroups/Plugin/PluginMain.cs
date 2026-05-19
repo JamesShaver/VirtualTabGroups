@@ -207,5 +207,44 @@ namespace VirtualTabGroups.Plugin
                 sb);
             return sb.ToString();
         }
+
+        internal static string[] GetAllOpenFilePaths()
+        {
+            int count = (int)Win32.SendMessage(
+                _nppData._nppHandle,
+                (int)NppMsg.NPPM_GETNBOPENFILES,
+                IntPtr.Zero,
+                IntPtr.Zero);
+
+            if (count <= 0) return Array.Empty<string>();
+
+            IntPtr arrayPtr = Marshal.AllocHGlobal(count * IntPtr.Size);
+            var stringBuffers = new IntPtr[count];
+            try
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    stringBuffers[i] = Marshal.AllocHGlobal(2048);
+                    Marshal.WriteIntPtr(arrayPtr, i * IntPtr.Size, stringBuffers[i]);
+                }
+
+                Win32.SendMessage(
+                    _nppData._nppHandle,
+                    (int)NppMsg.NPPM_GETOPENFILENAMES,
+                    arrayPtr,
+                    new IntPtr(count));
+
+                var result = new string[count];
+                for (int i = 0; i < count; i++)
+                    result[i] = Marshal.PtrToStringUni(stringBuffers[i]);
+                return result;
+            }
+            finally
+            {
+                for (int i = 0; i < count; i++)
+                    if (stringBuffers[i] != IntPtr.Zero) Marshal.FreeHGlobal(stringBuffers[i]);
+                Marshal.FreeHGlobal(arrayPtr);
+            }
+        }
     }
 }
