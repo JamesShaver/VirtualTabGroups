@@ -194,7 +194,8 @@ namespace VirtualTabGroups.Plugin
 
         private static void OnAbout()
         {
-            // Phase 13 Task 41 wires the About dialog.
+            using (var dlg = new AboutDialog(Theme))
+                dlg.ShowDialog();
         }
 
         internal static string GetCurrentFullPath()

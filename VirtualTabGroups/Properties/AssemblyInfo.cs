@@ -2,10 +2,10 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 
 [assembly: AssemblyTitle("Virtual Tab Groups")]
-[assembly: AssemblyDescription("Logical workspace manager for Notepad++: virtual groups of open documents.")]
+[assembly: AssemblyDescription("A logical workspace manager for Notepad++ — organize your open files into virtual folders that persist across sessions.")]
 [assembly: AssemblyCompany("")]
-[assembly: AssemblyProduct("VirtualTabGroups")]
-[assembly: AssemblyCopyright("")]
+[assembly: AssemblyProduct("Virtual Tab Groups")]
+[assembly: AssemblyCopyright("Released under the MIT license.")]
 [assembly: AssemblyCulture("")]
 [assembly: ComVisible(false)]
 [assembly: Guid("779d42b3-e08d-44ec-abbc-b717d0c5aa85")]
