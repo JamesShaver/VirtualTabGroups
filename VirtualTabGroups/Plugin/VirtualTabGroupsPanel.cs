@@ -26,6 +26,12 @@ namespace VirtualTabGroups.Plugin
 
         public DarkAwareTreeView Tree => _tree;
 
+        public void AttachTheme(ThemeManager theme)
+        {
+            _tree.AttachTheme(theme);
+            _menu.Renderer = new VirtualTabGroups.Plugin.UI.DarkAwareToolStripRenderer(theme);
+        }
+
         public VirtualTabGroupsPanel()
         {
             Text = "Virtual Tab Groups";

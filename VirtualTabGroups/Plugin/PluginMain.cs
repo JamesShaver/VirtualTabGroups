@@ -167,7 +167,7 @@ namespace VirtualTabGroups.Plugin
             {
                 _panel = new VirtualTabGroupsPanel();
                 _panel.Show();
-                _panel.Tree.AttachTheme(Theme);
+                _panel.AttachTheme(Theme);
 
                 _panel.RegisterAsDockedPanel(
                     nppHandle: _nppData._nppHandle,

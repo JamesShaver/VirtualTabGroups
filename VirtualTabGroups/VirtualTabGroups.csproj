@@ -93,6 +93,7 @@
     <Compile Include="Plugin\UI\Win32NppMessageSender.cs" />
     <Compile Include="Plugin\UI\ThemeManager.cs" />
     <Compile Include="Plugin\UI\DarkAwareTreeView.cs" />
+    <Compile Include="Plugin\UI\DarkAwareToolStripRenderer.cs" />
     <Compile Include="Plugin\UI\IconCache.cs" />
     <Compile Include="Plugin\VirtualTabGroupsPanel.cs" />
   </ItemGroup>
