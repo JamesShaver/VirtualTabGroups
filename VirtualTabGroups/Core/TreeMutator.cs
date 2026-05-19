@@ -58,5 +58,53 @@ namespace VirtualTabGroups.Core
             }
             return null;
         }
+
+        /// <summary>
+        /// Moves a node from its current container to the destination folder at the given insertion position.
+        /// Re-resolves the file's alias if it's a file and the destination has a name clash.
+        /// Rejects cyclic moves (a folder cannot be moved into itself or any descendant).
+        /// Returns true on success; false if rejected or node not in tree.
+        /// </summary>
+        public static bool MoveNode(TreeNodeModel node, FolderNode destination, int position, FolderNode root)
+        {
+            if (node == null) throw new ArgumentNullException(nameof(node));
+            if (destination == null) throw new ArgumentNullException(nameof(destination));
+            if (root == null) throw new ArgumentNullException(nameof(root));
+
+            // Cyclic check: dragged folder can't drop into itself or its descendants.
+            if (node is FolderNode draggedFolder)
+            {
+                if (draggedFolder == destination) return false;
+                if (IsDescendant(draggedFolder, destination)) return false;
+            }
+
+            var sourceContainer = FindContainer(root, node);
+            if (sourceContainer == null) return false;
+
+            sourceContainer.Children.Remove(node);
+
+            // Re-resolve alias for files moving between folders.
+            if (node is FileNode file && sourceContainer != destination)
+            {
+                file.Name = AliasResolver.Resolve(destination, file.Path);
+            }
+
+            position = Math.Max(0, Math.Min(position, destination.Children.Count));
+            destination.Children.Insert(position, node);
+            return true;
+        }
+
+        /// <summary>
+        /// True if 'candidate' is anywhere inside 'ancestor's subtree (any depth).
+        /// </summary>
+        private static bool IsDescendant(FolderNode ancestor, TreeNodeModel candidate)
+        {
+            foreach (var child in ancestor.Children)
+            {
+                if (child == candidate) return true;
+                if (child is FolderNode subFolder && IsDescendant(subFolder, candidate)) return true;
+            }
+            return false;
+        }
     }
 }

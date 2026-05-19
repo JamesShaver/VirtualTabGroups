@@ -82,5 +82,69 @@ namespace VirtualTabGroups.Tests
 
             Assert.False(removed);
         }
+
+        [Fact]
+        public void MoveNode_FileToOtherFolder_NoNameClash_PreservesName()
+        {
+            var root = new FolderNode("");
+            var a = new FolderNode("A");
+            var b = new FolderNode("B");
+            var user = new FileNode("User.php", @"C:\src\User.php");
+            a.Children.Add(user);
+            root.Children.Add(a);
+            root.Children.Add(b);
+
+            bool moved = TreeMutator.MoveNode(user, b, position: 0, root);
+
+            Assert.True(moved);
+            Assert.Empty(a.Children);
+            Assert.Single(b.Children);
+            Assert.Equal("User.php", user.Name);
+        }
+
+        [Fact]
+        public void MoveNode_FileToFolderWithClashingName_ReResolvesAlias()
+        {
+            var root = new FolderNode("");
+            var a = new FolderNode("A");
+            var b = new FolderNode("B");
+            a.Children.Add(new FileNode("User.php", @"C:\b\User.php"));
+            b.Children.Add(new FileNode("User.php", @"C:\b1\User.php"));
+            var moving = (FileNode)a.Children[0];
+            root.Children.Add(a);
+            root.Children.Add(b);
+
+            TreeMutator.MoveNode(moving, b, position: 1, root);
+
+            Assert.Equal("User(1).php", moving.Name);
+            Assert.Equal(2, b.Children.Count);
+        }
+
+        [Fact]
+        public void MoveNode_FolderIntoItself_IsRejected()
+        {
+            var root = new FolderNode("");
+            var a = new FolderNode("A");
+            root.Children.Add(a);
+
+            bool moved = TreeMutator.MoveNode(a, a, position: 0, root);
+
+            Assert.False(moved);
+            Assert.Single(root.Children);
+        }
+
+        [Fact]
+        public void MoveNode_FolderIntoDescendant_IsRejected()
+        {
+            var root = new FolderNode("");
+            var outer = new FolderNode("Outer");
+            var inner = new FolderNode("Inner");
+            outer.Children.Add(inner);
+            root.Children.Add(outer);
+
+            bool moved = TreeMutator.MoveNode(outer, inner, position: 0, root);
+
+            Assert.False(moved);
+        }
     }
 }
