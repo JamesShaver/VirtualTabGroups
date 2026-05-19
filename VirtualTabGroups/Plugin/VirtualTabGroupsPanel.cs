@@ -33,6 +33,11 @@ namespace VirtualTabGroups.Plugin
             _tree.AfterExpand += Tree_AfterExpand;
             _tree.AfterCollapse += Tree_AfterCollapse;
             _tree.AfterLabelEdit += Tree_AfterLabelEdit;
+            _tree.NodeMouseDoubleClick += (s, ev) =>
+            {
+                if (ev.Node?.Tag is FileNode f)
+                    PluginMain.OpenFile(f.Path);
+            };
 
             _tree.ContextMenuStrip = _menu;
             _menu.Opening += Menu_Opening;
@@ -212,7 +217,10 @@ namespace VirtualTabGroups.Plugin
         }
 
         // Action stubs — wired in Tasks 26-31.
-        private void OnFileOpen(FileNode file) { /* Task 31 */ }
+        private void OnFileOpen(FileNode file)
+        {
+            PluginMain.OpenFile(file.Path);
+        }
         private void OnAddActive(FolderNode targetFolder)
         {
             if (targetFolder == null) return;

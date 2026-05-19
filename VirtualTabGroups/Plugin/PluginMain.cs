@@ -219,6 +219,17 @@ namespace VirtualTabGroups.Plugin
             return sb.ToString();
         }
 
+        internal static void OpenFile(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return;
+            IntPtr pathPtr = Marshal.StringToHGlobalUni(path);
+            try
+            {
+                Win32.SendMessage(_nppData._nppHandle, (int)NppMsg.NPPM_DOOPEN, IntPtr.Zero, pathPtr);
+            }
+            finally { Marshal.FreeHGlobal(pathPtr); }
+        }
+
         private static void OnFileClosed(IntPtr bufferId)
         {
             if (_root == null || _stateStore == null) return;
