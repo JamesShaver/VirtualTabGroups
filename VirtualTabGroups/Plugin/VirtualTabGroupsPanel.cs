@@ -15,6 +15,7 @@ namespace VirtualTabGroups.Plugin
         private FolderNode _root;
         private StateStore _stateStore;
         private Guid? _currentSelectedId;
+        private DarkAwareToolTip _tooltip;
 
         // Drag-drop: hover-expand state.
         private TreeNode _hoverNode;
@@ -30,6 +31,13 @@ namespace VirtualTabGroups.Plugin
         {
             _tree.AttachTheme(theme);
             _menu.Renderer = new VirtualTabGroups.Plugin.UI.DarkAwareToolStripRenderer(theme);
+
+            _tooltip = new VirtualTabGroups.Plugin.UI.DarkAwareToolTip(theme);
+            _tree.NodeMouseHover += (s, ev) =>
+            {
+                if (ev.Node?.Tag is FileNode f)
+                    _tooltip.SetToolTip(_tree, f.Path);
+            };
         }
 
         public VirtualTabGroupsPanel()
