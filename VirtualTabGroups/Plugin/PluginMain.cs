@@ -82,7 +82,7 @@ namespace VirtualTabGroups.Plugin
                     break;
 
                 case NppNotif.NPPN_FILECLOSED:
-                    // Phase 10 wires auto-removal here.
+                    OnFileClosed(notification.nmhdr.idFrom);
                     break;
 
                 case NppNotif.NPPN_DARKMODECHANGED:
@@ -206,6 +206,35 @@ namespace VirtualTabGroups.Plugin
                 new IntPtr(sb.Capacity),
                 sb);
             return sb.ToString();
+        }
+
+        internal static string GetPathForBufferId(IntPtr bufferId)
+        {
+            var sb = new System.Text.StringBuilder(1024);
+            Win32.SendMessageStringBuilder(
+                _nppData._nppHandle,
+                (int)NppMsg.NPPM_GETFULLPATHFROMBUFFERID,
+                bufferId,
+                sb);
+            return sb.ToString();
+        }
+
+        private static void OnFileClosed(IntPtr bufferId)
+        {
+            if (_root == null || _stateStore == null) return;
+
+            var path = GetPathForBufferId(bufferId);
+            if (string.IsNullOrEmpty(path)) return;
+
+            string canonical;
+            try { canonical = System.IO.Path.GetFullPath(path); }
+            catch { canonical = path; }
+
+            int removed = VirtualTabGroups.Core.TreeMutator.RemoveAllByPath(_root, canonical);
+            if (removed == 0) return;
+
+            _panel?.RefreshFromModel();
+            _stateStore.MarkDirty(_root, null);
         }
 
         internal static string[] GetAllOpenFilePaths()

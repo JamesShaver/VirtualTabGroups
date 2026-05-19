@@ -82,6 +82,21 @@ namespace VirtualTabGroups.Plugin
             }
         }
 
+        /// <summary>
+        /// Rebuilds the TreeView from the current model. Used when external code
+        /// (auto-removal on file close) mutates the model directly.
+        /// </summary>
+        public void RefreshFromModel()
+        {
+            if (_root == null) return;
+            if (InvokeRequired)
+            {
+                BeginInvoke(new Action(RefreshFromModel));
+                return;
+            }
+            BindRoot(_root, _stateStore, _currentSelectedId);
+        }
+
         private TreeNode BuildTreeNode(TreeNodeModel model)
         {
             var tn = new TreeNode(model.Name) { Tag = model };
