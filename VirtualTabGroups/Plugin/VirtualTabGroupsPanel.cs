@@ -236,7 +236,22 @@ namespace VirtualTabGroups.Plugin
 
             if (any) _stateStore?.MarkDirty(_root, _currentSelectedId);
         }
-        private void OnNewFolder(FolderNode targetFolder) { /* Task 28 */ }
+        private void OnNewFolder(FolderNode targetFolder)
+        {
+            if (targetFolder == null) return;
+            var newFolder = new FolderNode("New Folder");
+            targetFolder.Children.Add(newFolder);
+
+            var tn = BuildTreeNode(newFolder);
+            var parentTn = FindByModelId(_tree.Nodes, targetFolder.Id);
+            if (parentTn == null) _tree.Nodes.Add(tn);
+            else { parentTn.Nodes.Add(tn); parentTn.Expand(); }
+
+            _tree.SelectedNode = tn;
+            tn.BeginEdit();
+
+            _stateStore?.MarkDirty(_root, _currentSelectedId);
+        }
         private void OnRemove(TreeNodeModel target) { /* Task 29 */ }
 
         private void ExpandAllUnder(TreeNode tn, bool expand)
