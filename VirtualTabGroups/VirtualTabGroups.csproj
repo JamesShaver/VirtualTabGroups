@@ -66,6 +66,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Core\AliasResolver.cs" />
+    <Compile Include="Core\TreeMutator.cs" />
     <Compile Include="Core\StateStore.cs" />
     <Compile Include="Core\IStateStoreObserver.cs" />
     <Compile Include="Core\NodeJsonConverter.cs" />
