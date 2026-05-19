@@ -38,8 +38,9 @@ jobs:
           foreach ($arch in @('x64', 'x86', 'ARM64')) {
             $stage = "stage_$arch"
             New-Item -ItemType Directory -Path $stage -Force | Out-Null
+            # Only two DLLs ship: the plugin entry-point and its JSON dependency.
+            # VirtualTabGroups.Managed.dll no longer exists — the C++/CLI bridge was removed.
             Copy-Item "VirtualTabGroups\bin\Release\$arch\VirtualTabGroups.dll" -Destination $stage
-            Copy-Item "VirtualTabGroups\bin\Release\$arch\VirtualTabGroups.Managed.dll" -Destination $stage
             Copy-Item "VirtualTabGroups\bin\Release\$arch\Newtonsoft.Json.dll" -Destination $stage
             Compress-Archive -Path "$stage\*" -DestinationPath "artifacts\VirtualTabGroups_$arch.zip"
           }
