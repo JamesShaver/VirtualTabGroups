@@ -7,6 +7,13 @@ namespace VirtualTabGroups.Plugin.UI
     {
         private ThemeManager _theme;
 
+        private string _emptyStateText;
+        public string EmptyStateText
+        {
+            get => _emptyStateText;
+            set { _emptyStateText = value; Invalidate(); }
+        }
+
         public DarkAwareTreeView()
         {
             DrawMode = TreeViewDrawMode.OwnerDrawAll;
@@ -124,6 +131,19 @@ namespace VirtualTabGroups.Plugin.UI
             {
                 using (var pen = new Pen(_theme.HotEdge, 2))
                     e.Graphics.DrawLine(pen, _insertionLine.Value.Left, _insertionLine.Value.Top, _insertionLine.Value.Right, _insertionLine.Value.Top);
+            }
+
+            if (!string.IsNullOrEmpty(_emptyStateText) && Nodes.Count == 0 && _theme != null)
+            {
+                var bounds = ClientRectangle;
+                var textRect = new Rectangle(
+                    bounds.Left,
+                    bounds.Top + bounds.Height / 3,
+                    bounds.Width,
+                    Font.Height + 4);
+                TextRenderer.DrawText(e.Graphics, _emptyStateText, Font, textRect,
+                    _theme.DisabledText,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
             }
         }
 

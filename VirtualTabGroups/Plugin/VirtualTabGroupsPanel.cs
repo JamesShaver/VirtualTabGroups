@@ -48,6 +48,7 @@ namespace VirtualTabGroups.Plugin
             StartPosition = FormStartPosition.Manual;
 
             _tree = new DarkAwareTreeView { Dock = DockStyle.Fill };
+            _tree.EmptyStateText = "Right-click here to add open files";
             _tree.ImageList = _icons.Images;
             _tree.ImageIndex = _icons.FolderClosedIndex;
             _tree.SelectedImageIndex = _icons.FolderOpenIndex;
