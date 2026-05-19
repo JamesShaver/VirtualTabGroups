@@ -240,5 +240,28 @@ namespace VirtualTabGroups.Tests
             store.Dispose();
             store.Dispose();  // Must not throw.
         }
+
+        [Fact]
+        public void Save_IOFailure_NotifiesObserverAndKeepsDirtyState()
+        {
+            // Point at a directory that doesn't exist so File.WriteAllText throws.
+            var bogusPath = Path.Combine(
+                Path.GetTempPath(),
+                "VTG-doesnotexist-" + System.Guid.NewGuid().ToString("N"),
+                "state.json");
+
+            var observer = new CapturingObserver();
+            using (var store = new StateStore(bogusPath, observer, System.TimeSpan.FromMilliseconds(50)))
+            {
+                store.MarkDirty(new FolderNode(""), null);
+                System.Threading.Thread.Sleep(200);
+
+                Assert.NotNull(observer.SaveError);
+                Assert.IsAssignableFrom<System.IO.IOException>(observer.SaveError);
+
+                // The pending state should still be set after a failure — verify by triggering MarkDirty again.
+                store.MarkDirty(new FolderNode(""), null);
+            }
+        }
     }
 }

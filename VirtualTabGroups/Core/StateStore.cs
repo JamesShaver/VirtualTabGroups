@@ -116,26 +116,6 @@ namespace VirtualTabGroups.Core
             _debounceTimer.Change(_debounceInterval, System.Threading.Timeout.InfiniteTimeSpan);
         }
 
-        private void OnDebounceFired()
-        {
-            try
-            {
-                WritePendingNow();
-            }
-            catch (Exception)
-            {
-                // Task 11 wires this to observer.OnSaveFailed.
-            }
-        }
-
-        public void Flush()
-        {
-            if (_disposed) return;
-            if (IsReadOnly) return;
-            _debounceTimer.Change(System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);
-            WritePendingNow();
-        }
-
         private void WritePendingNow()
         {
             string json;
@@ -143,20 +123,44 @@ namespace VirtualTabGroups.Core
             {
                 json = _pendingJson;
                 if (json == null) return;
-                _pendingJson = null;
+                // Do NOT clear _pendingJson yet — only clear on successful write.
             }
 
-            var tmpPath = _stateFilePath + ".tmp";
-            File.WriteAllText(tmpPath, json, new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            try
+            {
+                var tmpPath = _stateFilePath + ".tmp";
+                File.WriteAllText(tmpPath, json, new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 
-            if (File.Exists(_stateFilePath))
-            {
-                File.Replace(tmpPath, _stateFilePath, destinationBackupFileName: null);
+                if (File.Exists(_stateFilePath))
+                {
+                    File.Replace(tmpPath, _stateFilePath, destinationBackupFileName: null);
+                }
+                else
+                {
+                    File.Move(tmpPath, _stateFilePath);
+                }
+
+                lock (_writeLock)
+                {
+                    // Only clear if no new MarkDirty raced in with a newer string.
+                    if (_pendingJson == json) _pendingJson = null;
+                }
             }
-            else
+            catch (Exception ex)
             {
-                File.Move(tmpPath, _stateFilePath);
+                _observer?.OnSaveFailed(ex);
+                // Leave _pendingJson set so the next MarkDirty or Flush retries.
             }
+        }
+
+        private void OnDebounceFired() => WritePendingNow();
+
+        public void Flush()
+        {
+            if (_disposed) return;
+            if (IsReadOnly) return;
+            _debounceTimer.Change(System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);
+            WritePendingNow();
         }
 
         private string BackupCorruptFile()
