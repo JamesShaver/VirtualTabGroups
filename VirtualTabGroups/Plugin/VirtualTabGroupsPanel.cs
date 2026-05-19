@@ -11,6 +11,7 @@ namespace VirtualTabGroups.Plugin
     {
         private readonly DarkAwareTreeView _tree;
         private readonly IconCache _icons = new IconCache();
+        private readonly ContextMenuStrip _menu = new ContextMenuStrip();
         private FolderNode _root;
         private StateStore _stateStore;
         private Guid? _currentSelectedId;
@@ -32,6 +33,9 @@ namespace VirtualTabGroups.Plugin
             _tree.AfterExpand += Tree_AfterExpand;
             _tree.AfterCollapse += Tree_AfterCollapse;
             _tree.AfterLabelEdit += Tree_AfterLabelEdit;
+
+            _tree.ContextMenuStrip = _menu;
+            _menu.Opening += Menu_Opening;
 
             try
             {
@@ -157,6 +161,56 @@ namespace VirtualTabGroups.Plugin
                 if (_stateStore != null && _root != null)
                     _stateStore.MarkDirty(_root, _currentSelectedId);
             }
+        }
+
+        private void Menu_Opening(object sender, System.ComponentModel.CancelEventArgs e)
+        {
+            _menu.Items.Clear();
+
+            var hit = _tree.HitTest(_tree.PointToClient(Cursor.Position));
+            var target = hit.Node?.Tag as TreeNodeModel;
+            var targetFolder = target as FolderNode ?? _root;
+
+            if (target is FileNode fileTarget)
+            {
+                _menu.Items.Add(new ToolStripMenuItem("Open", null, (s, ev) => OnFileOpen(fileTarget)));
+                _menu.Items.Add(new ToolStripSeparator());
+                _menu.Items.Add(new ToolStripMenuItem("Rename", null, (s, ev) => hit.Node.BeginEdit()));
+                _menu.Items.Add(new ToolStripMenuItem("Remove…", null, (s, ev) => OnRemove(fileTarget)));
+            }
+            else
+            {
+                _menu.Items.Add(new ToolStripMenuItem("Add Active File", null, (s, ev) => OnAddActive(targetFolder)));
+                _menu.Items.Add(new ToolStripMenuItem("Add All Open Files", null, (s, ev) => OnAddAllOpen(targetFolder)));
+                _menu.Items.Add(new ToolStripMenuItem("New Folder", null, (s, ev) => OnNewFolder(targetFolder)));
+
+                if (target is FolderNode existingFolder)
+                {
+                    _menu.Items.Add(new ToolStripSeparator());
+                    _menu.Items.Add(new ToolStripMenuItem("Rename", null, (s, ev) => hit.Node.BeginEdit()));
+                    _menu.Items.Add(new ToolStripMenuItem("Remove…", null, (s, ev) => OnRemove(existingFolder)));
+                    _menu.Items.Add(new ToolStripSeparator());
+                    _menu.Items.Add(new ToolStripMenuItem("Expand All", null, (s, ev) => ExpandAllUnder(hit.Node, true)));
+                    _menu.Items.Add(new ToolStripMenuItem("Collapse All", null, (s, ev) => ExpandAllUnder(hit.Node, false)));
+                }
+            }
+        }
+
+        // Action stubs — wired in Tasks 26-31.
+        private void OnFileOpen(FileNode file) { /* Task 31 */ }
+        private void OnAddActive(FolderNode targetFolder) { /* Task 26 */ }
+        private void OnAddAllOpen(FolderNode targetFolder) { /* Task 27 */ }
+        private void OnNewFolder(FolderNode targetFolder) { /* Task 28 */ }
+        private void OnRemove(TreeNodeModel target) { /* Task 29 */ }
+
+        private void ExpandAllUnder(TreeNode tn, bool expand)
+        {
+            void Recurse(TreeNode n)
+            {
+                if (expand) n.Expand(); else n.Collapse();
+                foreach (TreeNode c in n.Nodes) Recurse(c);
+            }
+            Recurse(tn);
         }
 
         protected override void Dispose(bool disposing)
