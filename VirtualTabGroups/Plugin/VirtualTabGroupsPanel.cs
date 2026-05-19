@@ -353,6 +353,7 @@ namespace VirtualTabGroups.Plugin
             try
             {
                 VirtualTabGroups.Plugin.CrashLog.Write("OnAddActive: entered, targetFolder=" + (targetFolder?.Name ?? "<null>"));
+                VirtualTabGroups.Plugin.PluginMain.DiagnosticProbe();
                 if (targetFolder == null) return;
 
                 var path = PluginMain.GetCurrentFullPathManual();

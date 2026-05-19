@@ -411,6 +411,95 @@ namespace VirtualTabGroups.Plugin
             }
         }
 
+        [System.Runtime.ExceptionServices.HandleProcessCorruptedStateExceptions]
+        [System.Security.SecurityCritical]
+        internal static void DiagnosticProbe()
+        {
+            CrashLog.Write("DiagnosticProbe: START");
+
+            // Test 1: a no-buffer message that just returns an integer
+            try
+            {
+                CrashLog.Write("DiagnosticProbe: about to send NPPM_GETNBOPENFILES");
+                IntPtr count = Win32.SendMessage(
+                    _nppData._nppHandle,
+                    (int)NppMsg.NPPM_GETNBOPENFILES,
+                    IntPtr.Zero,
+                    IntPtr.Zero);
+                CrashLog.Write("DiagnosticProbe: NPPM_GETNBOPENFILES returned " + count.ToInt64());
+            }
+            catch (Exception ex) { CrashLog.WriteException("DiagnosticProbe NPPM_GETNBOPENFILES", ex); }
+
+            // Test 2: get the current buffer ID — also no buffer marshaling
+            try
+            {
+                CrashLog.Write("DiagnosticProbe: about to send NPPM_GETCURRENTBUFFERID");
+                IntPtr bufferId = Win32.SendMessage(
+                    _nppData._nppHandle,
+                    (int)NppMsg.NPPM_GETCURRENTBUFFERID,
+                    IntPtr.Zero,
+                    IntPtr.Zero);
+                CrashLog.Write("DiagnosticProbe: NPPM_GETCURRENTBUFFERID returned " + bufferId.ToInt64().ToString("X"));
+            }
+            catch (Exception ex) { CrashLog.WriteException("DiagnosticProbe NPPM_GETCURRENTBUFFERID", ex); }
+
+            // Test 3: re-call NPPM_GETPLUGINSCONFIGDIR with HGlobal buffer — same message that worked in setInfo
+            try
+            {
+                CrashLog.Write("DiagnosticProbe: about to send NPPM_GETPLUGINSCONFIGDIR (HGlobal buffer)");
+                const int bufSize = 512;
+                IntPtr buffer = Marshal.AllocHGlobal(bufSize * 2);
+                try
+                {
+                    for (int i = 0; i < bufSize * 2; i++) Marshal.WriteByte(buffer, i, 0);
+                    Win32.SendMessage(
+                        _nppData._nppHandle,
+                        (int)NppMsg.NPPM_GETPLUGINSCONFIGDIR,
+                        new IntPtr(bufSize),
+                        buffer);
+                    var s = Marshal.PtrToStringUni(buffer);
+                    CrashLog.Write("DiagnosticProbe: NPPM_GETPLUGINSCONFIGDIR returned '" + (s ?? "<null>") + "'");
+                }
+                finally { Marshal.FreeHGlobal(buffer); }
+            }
+            catch (Exception ex) { CrashLog.WriteException("DiagnosticProbe NPPM_GETPLUGINSCONFIGDIR", ex); }
+
+            // Test 4: try NPPM_GETFULLPATHFROMBUFFERID with the buffer ID we got (if any).
+            // This is the same data we want, via a different message.
+            try
+            {
+                CrashLog.Write("DiagnosticProbe: about to send NPPM_GETCURRENTBUFFERID again for the path test");
+                IntPtr bufferId = Win32.SendMessage(
+                    _nppData._nppHandle,
+                    (int)NppMsg.NPPM_GETCURRENTBUFFERID,
+                    IntPtr.Zero,
+                    IntPtr.Zero);
+                CrashLog.Write("DiagnosticProbe: got bufferId=" + bufferId.ToInt64().ToString("X"));
+
+                if (bufferId != IntPtr.Zero)
+                {
+                    const int bufSize = 512;
+                    IntPtr buffer = Marshal.AllocHGlobal(bufSize * 2);
+                    try
+                    {
+                        for (int i = 0; i < bufSize * 2; i++) Marshal.WriteByte(buffer, i, 0);
+                        CrashLog.Write("DiagnosticProbe: about to send NPPM_GETFULLPATHFROMBUFFERID");
+                        Win32.SendMessage(
+                            _nppData._nppHandle,
+                            (int)NppMsg.NPPM_GETFULLPATHFROMBUFFERID,
+                            bufferId,
+                            buffer);
+                        var s = Marshal.PtrToStringUni(buffer);
+                        CrashLog.Write("DiagnosticProbe: NPPM_GETFULLPATHFROMBUFFERID returned '" + (s ?? "<null>") + "'");
+                    }
+                    finally { Marshal.FreeHGlobal(buffer); }
+                }
+            }
+            catch (Exception ex) { CrashLog.WriteException("DiagnosticProbe NPPM_GETFULLPATHFROMBUFFERID", ex); }
+
+            CrashLog.Write("DiagnosticProbe: END");
+        }
+
         internal static string GetPathForBufferId(IntPtr bufferId)
         {
             var sb = new System.Text.StringBuilder(1024);
