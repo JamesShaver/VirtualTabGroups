@@ -11,7 +11,7 @@ namespace VirtualTabGroups.Core
         private readonly IStateStoreObserver _observer;
         private readonly System.Threading.Timer _debounceTimer;
         private readonly TimeSpan _debounceInterval;
-        private bool _disposed;
+        private volatile bool _disposed;
 
         public StateStore(string stateFilePath, IStateStoreObserver observer = null)
             : this(stateFilePath, observer, TimeSpan.FromMilliseconds(500)) { }
@@ -64,7 +64,12 @@ namespace VirtualTabGroups.Core
                 return new FolderNode("");
             }
 
-            LastSelectedId = (Guid?)envelope["lastSelectedId"];
+            LastSelectedId = null;
+            var lastSelectedToken = (string)envelope["lastSelectedId"];
+            if (lastSelectedToken != null && Guid.TryParse(lastSelectedToken, out var parsedId))
+            {
+                LastSelectedId = parsedId;
+            }
             try
             {
                 var rootToken = envelope["root"]

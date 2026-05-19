@@ -336,5 +336,43 @@ namespace VirtualTabGroups.Tests
 
             Assert.Equal(originalContent, File.ReadAllText(path));
         }
+
+        [Fact]
+        public void Load_UnknownFields_AreSilentlyIgnored()
+        {
+            var path = NewTempStatePath();
+            // Valid v1 envelope plus an unknown top-level field and an unknown per-node field.
+            File.WriteAllText(path,
+                "{\"schemaVersion\":1,\"futureField\":\"hello\"," +
+                "\"root\":{\"type\":\"folder\",\"id\":\"11111111-1111-1111-1111-111111111111\"," +
+                "\"name\":\"\",\"expanded\":false," +
+                "\"color\":\"#ff0000\"," +
+                "\"children\":[]}}");
+
+            using (var store = new StateStore(path))
+            {
+                var root = store.Load();
+                Assert.NotNull(root);
+                Assert.Empty(root.Children);
+                Assert.False(store.IsReadOnly);
+            }
+        }
+
+        [Fact]
+        public void Load_MalformedLastSelectedId_DoesNotThrow()
+        {
+            var path = NewTempStatePath();
+            File.WriteAllText(path,
+                "{\"schemaVersion\":1,\"lastSelectedId\":\"not-a-guid\"," +
+                "\"root\":{\"type\":\"folder\",\"id\":\"11111111-1111-1111-1111-111111111111\"," +
+                "\"name\":\"\",\"children\":[]}}");
+
+            using (var store = new StateStore(path))
+            {
+                var root = store.Load();
+                Assert.NotNull(root);
+                Assert.Null(store.LastSelectedId);
+            }
+        }
     }
 }
