@@ -289,5 +289,52 @@ namespace VirtualTabGroups.Tests
                 System.Threading.Thread.Sleep(200);
             }
         }
+
+        [Fact]
+        public void Flush_AfterMarkDirty_WritesSynchronouslyBeforeReturning()
+        {
+            var path = NewTempStatePath();
+            using (var store = new StateStore(path, null, System.TimeSpan.FromSeconds(10)))  // long debounce
+            {
+                store.MarkDirty(new FolderNode(""), null);
+                Assert.False(File.Exists(path));
+
+                store.Flush();
+
+                Assert.True(File.Exists(path));
+            }
+        }
+
+        [Fact]
+        public void Dispose_FlushesPendingWrite()
+        {
+            var path = NewTempStatePath();
+            using (var store = new StateStore(path, null, System.TimeSpan.FromSeconds(10)))
+            {
+                store.MarkDirty(new FolderNode(""), null);
+            }
+            // Outside the using — Dispose must have flushed.
+            Assert.True(File.Exists(path));
+        }
+
+        [Fact]
+        public void ReadOnlyMode_SuppressesMarkDirtyAndFlush()
+        {
+            var path = NewTempStatePath();
+            File.WriteAllText(path,
+                "{\"schemaVersion\":99,\"root\":{\"type\":\"folder\",\"id\":\"11111111-1111-1111-1111-111111111111\",\"name\":\"\",\"children\":[]}}");
+            var originalContent = File.ReadAllText(path);
+
+            using (var store = new StateStore(path))
+            {
+                store.Load();
+                Assert.True(store.IsReadOnly);
+
+                store.MarkDirty(new FolderNode(""), null);
+                store.Flush();
+            }
+
+            Assert.Equal(originalContent, File.ReadAllText(path));
+        }
     }
 }
