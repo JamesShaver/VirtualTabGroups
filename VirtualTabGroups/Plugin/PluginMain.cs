@@ -342,15 +342,60 @@ namespace VirtualTabGroups.Plugin
                 dlg.ShowDialog();
         }
 
+        [System.Runtime.ExceptionServices.HandleProcessCorruptedStateExceptions]
+        [System.Security.SecurityCritical]
         internal static string GetCurrentFullPath()
         {
+            CrashLog.Write("GetCurrentFullPath: 1 - entered, _nppData._nppHandle=" + _nppData._nppHandle.ToInt64().ToString("X"));
             var sb = new StringBuilder(1024);
-            Win32.SendMessageStringBuilder(
-                _nppData._nppHandle,
-                (int)NppMsg.NPPM_GETFULLCURRENTPATH,
-                new IntPtr(sb.Capacity),
-                sb);
-            return sb.ToString();
+            CrashLog.Write("GetCurrentFullPath: 2 - StringBuilder allocated, Capacity=" + sb.Capacity);
+            CrashLog.Write("GetCurrentFullPath: 3 - about to SendMessage NPPM_GETFULLCURRENTPATH (" + (int)NppMsg.NPPM_GETFULLCURRENTPATH + ")");
+            try
+            {
+                Win32.SendMessageStringBuilder(
+                    _nppData._nppHandle,
+                    (int)NppMsg.NPPM_GETFULLCURRENTPATH,
+                    new IntPtr(sb.Capacity),
+                    sb);
+            }
+            catch (Exception ex)
+            {
+                CrashLog.WriteException("GetCurrentFullPath SendMessage", ex);
+                throw;
+            }
+            CrashLog.Write("GetCurrentFullPath: 4 - SendMessage returned");
+            var result = sb.ToString();
+            CrashLog.Write("GetCurrentFullPath: 5 - sb.ToString='" + result + "' (length=" + result.Length + ")");
+            return result;
+        }
+
+        [System.Runtime.ExceptionServices.HandleProcessCorruptedStateExceptions]
+        [System.Security.SecurityCritical]
+        internal static string GetCurrentFullPathManual()
+        {
+            CrashLog.Write("GetCurrentFullPathManual: 1 - entered");
+            const int bufSize = 1024;
+            IntPtr buffer = Marshal.AllocHGlobal(bufSize * sizeof(char));
+            try
+            {
+                CrashLog.Write("GetCurrentFullPathManual: 2 - buffer allocated at " + buffer.ToInt64().ToString("X"));
+                // Zero the buffer so PtrToStringUni reads a clean string on success.
+                for (int i = 0; i < bufSize * sizeof(char); i++) Marshal.WriteByte(buffer, i, 0);
+                CrashLog.Write("GetCurrentFullPathManual: 3 - buffer zeroed, about to SendMessage");
+                Win32.SendMessage(
+                    _nppData._nppHandle,
+                    (int)NppMsg.NPPM_GETFULLCURRENTPATH,
+                    new IntPtr(bufSize),
+                    buffer);
+                CrashLog.Write("GetCurrentFullPathManual: 4 - SendMessage returned");
+                var result = Marshal.PtrToStringUni(buffer);
+                CrashLog.Write("GetCurrentFullPathManual: 5 - PtrToStringUni='" + (result ?? "<null>") + "'");
+                return result ?? string.Empty;
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(buffer);
+            }
         }
 
         internal static string GetPathForBufferId(IntPtr bufferId)

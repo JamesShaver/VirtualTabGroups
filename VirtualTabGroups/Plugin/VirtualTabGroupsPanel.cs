@@ -346,6 +346,8 @@ namespace VirtualTabGroups.Plugin
                 ReportError("Open File", ex);
             }
         }
+        [System.Runtime.ExceptionServices.HandleProcessCorruptedStateExceptions]
+        [System.Security.SecurityCritical]
         private void OnAddActive(FolderNode targetFolder)
         {
             try
