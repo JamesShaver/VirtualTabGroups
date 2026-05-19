@@ -1,5 +1,8 @@
 using System;
+using System.IO;
 using System.Runtime.InteropServices;
+using System.Text;
+using VirtualTabGroups.Core;
 using VirtualTabGroups.Plugin.Npp;
 
 namespace VirtualTabGroups.Plugin
@@ -12,6 +15,8 @@ namespace VirtualTabGroups.Plugin
     {
         internal const string PluginName = "Virtual Tab Groups";
         private static NppData _nppData;
+        private static StateStore _stateStore;
+        private static FolderNode _root;
 
         // Menu item command IDs.
         private const int CmdId_ShowPanel = 0;
@@ -32,7 +37,20 @@ namespace VirtualTabGroups.Plugin
         public static void SetInfo(NppData nppData)
         {
             _nppData = nppData;
-            // Phase 4 Task 14 wires the config-dir lookup and StateStore construction here.
+
+            var configDirBuilder = new StringBuilder(512);
+            Win32.SendMessageStringBuilder(
+                _nppData._nppHandle,
+                (int)NppMsg.NPPM_GETPLUGINSCONFIGDIR,
+                new IntPtr(configDirBuilder.Capacity),
+                configDirBuilder);
+
+            var pluginConfigDir = Path.Combine(configDirBuilder.ToString(), "VirtualTabGroups");
+            Directory.CreateDirectory(pluginConfigDir);
+
+            var stateFilePath = Path.Combine(pluginConfigDir, "state.json");
+            _stateStore = new StateStore(stateFilePath, observer: null);
+            // Observer assignment lands in Phase 5.
         }
 
         public static string GetName() => PluginName;
@@ -56,6 +74,17 @@ namespace VirtualTabGroups.Plugin
         }
 
         public static IntPtr MessageProc(uint msg, IntPtr wParam, IntPtr lParam) => IntPtr.Zero;
+
+        // ---- State accessors (used by future phases) ----
+
+        internal static IntPtr NppHandle => _nppData._nppHandle;
+        internal static NppData NppData => _nppData;
+        internal static StateStore StateStore => _stateStore;
+        internal static FolderNode Root
+        {
+            get => _root;
+            set => _root = value;
+        }
 
         // ---- Helpers ----
 
