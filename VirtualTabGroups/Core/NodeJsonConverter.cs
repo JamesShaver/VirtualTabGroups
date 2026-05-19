@@ -63,7 +63,7 @@ namespace VirtualTabGroups.Core
                     var folder = new FolderNode((string)obj["name"]);
                     folder.Id = Guid.Parse((string)obj["id"]);
                     folder.Expanded = (bool?)obj["expanded"] ?? false;
-                    var children = (JArray)obj["children"] ?? new JArray();
+                    var children = obj["children"] as JArray ?? new JArray();
                     foreach (var child in children)
                     {
                         var childNode = (TreeNodeModel)ReadJson(child.CreateReader(), typeof(TreeNodeModel), null, serializer);

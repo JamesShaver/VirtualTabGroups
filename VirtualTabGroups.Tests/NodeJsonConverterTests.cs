@@ -91,5 +91,28 @@ namespace VirtualTabGroups.Tests
             Assert.False(folder.Expanded);
             Assert.Empty(folder.Children);
         }
+
+        [Fact]
+        public void ReadNode_UnknownTypeDiscriminator_ThrowsJsonSerializationException()
+        {
+            var json = "{\"type\":\"symlink\",\"id\":\"11111111-1111-1111-1111-111111111111\",\"name\":\"foo\"}";
+
+            Assert.Throws<JsonSerializationException>(() =>
+                JsonConvert.DeserializeObject<TreeNodeModel>(json, Settings()));
+        }
+
+        [Fact]
+        public void WriteNode_UnknownSubclass_ThrowsJsonSerializationException()
+        {
+            var stub = new StubNode("x");
+
+            Assert.Throws<JsonSerializationException>(() =>
+                JsonConvert.SerializeObject(stub, Settings()));
+        }
+
+        private sealed class StubNode : TreeNodeModel
+        {
+            public StubNode(string name) : base(name) { }
+        }
     }
 }
