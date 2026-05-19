@@ -74,6 +74,7 @@
     <Compile Include="Core\FolderNode.cs" />
     <Compile Include="Core\FileNode.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Plugin\PluginMain.cs" />
     <Compile Include="Plugin\Npp\Win32.cs" />
     <Compile Include="Plugin\Npp\NppData.cs" />
     <Compile Include="Plugin\Npp\ShortcutKey.cs" />
