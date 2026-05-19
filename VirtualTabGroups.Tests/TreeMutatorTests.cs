@@ -146,5 +146,60 @@ namespace VirtualTabGroups.Tests
 
             Assert.False(moved);
         }
+
+        [Fact]
+        public void RemoveAllByPath_SinglePathInTree_RemovesIt()
+        {
+            var root = new FolderNode("");
+            var auth = new FolderNode("Auth");
+            auth.Children.Add(new FileNode("User.php", @"C:\src\User.php"));
+            root.Children.Add(auth);
+
+            int removed = TreeMutator.RemoveAllByPath(root, @"C:\src\User.php");
+
+            Assert.Equal(1, removed);
+            Assert.Empty(auth.Children);
+        }
+
+        [Fact]
+        public void RemoveAllByPath_PathInMultipleFolders_RemovesAll()
+        {
+            var root = new FolderNode("");
+            var a = new FolderNode("A");
+            var b = new FolderNode("B");
+            a.Children.Add(new FileNode("User.php", @"C:\src\User.php"));
+            b.Children.Add(new FileNode("User.php", @"C:\src\User.php"));
+            root.Children.Add(a);
+            root.Children.Add(b);
+
+            int removed = TreeMutator.RemoveAllByPath(root, @"C:\src\User.php");
+
+            Assert.Equal(2, removed);
+            Assert.Empty(a.Children);
+            Assert.Empty(b.Children);
+        }
+
+        [Fact]
+        public void RemoveAllByPath_CaseInsensitiveMatch()
+        {
+            var root = new FolderNode("");
+            root.Children.Add(new FileNode("User.php", @"C:\src\User.php"));
+
+            int removed = TreeMutator.RemoveAllByPath(root, @"c:\SRC\user.php");
+
+            Assert.Equal(1, removed);
+        }
+
+        [Fact]
+        public void RemoveAllByPath_PathNotInTree_ReturnsZero()
+        {
+            var root = new FolderNode("");
+            root.Children.Add(new FileNode("Other.php", @"C:\other.php"));
+
+            int removed = TreeMutator.RemoveAllByPath(root, @"C:\src\User.php");
+
+            Assert.Equal(0, removed);
+            Assert.Single(root.Children);
+        }
     }
 }

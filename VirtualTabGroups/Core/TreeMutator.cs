@@ -106,5 +106,32 @@ namespace VirtualTabGroups.Core
             }
             return false;
         }
+
+        /// <summary>
+        /// Recursively walks the tree, removing every FileNode whose Path matches (case-insensitive).
+        /// Returns the count of removed nodes.
+        /// </summary>
+        public static int RemoveAllByPath(FolderNode root, string path)
+        {
+            if (root == null) throw new ArgumentNullException(nameof(root));
+            if (string.IsNullOrEmpty(path)) return 0;
+
+            int total = 0;
+            // Walk children list in reverse so removals don't disrupt iteration.
+            for (int i = root.Children.Count - 1; i >= 0; i--)
+            {
+                var child = root.Children[i];
+                if (child is FileNode file && string.Equals(file.Path, path, StringComparison.OrdinalIgnoreCase))
+                {
+                    root.Children.RemoveAt(i);
+                    total++;
+                }
+                else if (child is FolderNode subFolder)
+                {
+                    total += RemoveAllByPath(subFolder, path);
+                }
+            }
+            return total;
+        }
     }
 }
