@@ -37,7 +37,10 @@ namespace VirtualTabGroups.Core
             catch (Exception)
             {
                 var backupPath = BackupCorruptFile();
-                _observer?.OnRecoveredFromCorruptFile(backupPath);
+                if (backupPath != null)
+                {
+                    _observer?.OnRecoveredFromCorruptFile(backupPath);
+                }
                 return new FolderNode("");
             }
 
@@ -57,7 +60,10 @@ namespace VirtualTabGroups.Core
             catch (Exception)
             {
                 var backupPath = BackupCorruptFile();
-                _observer?.OnRecoveredFromCorruptFile(backupPath);
+                if (backupPath != null)
+                {
+                    _observer?.OnRecoveredFromCorruptFile(backupPath);
+                }
                 LastSelectedId = null;
                 return new FolderNode("");
             }
@@ -65,7 +71,7 @@ namespace VirtualTabGroups.Core
 
         private string BackupCorruptFile()
         {
-            var suffix = ".corrupt-" + DateTime.Now.ToString("yyyyMMdd-HHmmss");
+            var suffix = ".corrupt-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmssZ");
             var backupPath = _stateFilePath + suffix;
 
             // Disambiguate if two corruption events land in the same second.
@@ -76,8 +82,16 @@ namespace VirtualTabGroups.Core
                 backupPath = _stateFilePath + suffix + "-" + n;
             }
 
-            File.Move(_stateFilePath, backupPath);
-            return backupPath;
+            try
+            {
+                File.Move(_stateFilePath, backupPath);
+                return backupPath;
+            }
+            catch (Exception)
+            {
+                // Locked file, denied permissions, etc. — recovery still proceeds without a backup.
+                return null;
+            }
         }
 
         public void Dispose() { }

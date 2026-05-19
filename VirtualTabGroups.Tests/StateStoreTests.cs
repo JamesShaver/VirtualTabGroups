@@ -112,5 +112,28 @@ namespace VirtualTabGroups.Tests
                 Assert.StartsWith(Path.GetFileName(path) + ".corrupt-", Path.GetFileName(observer.CorruptBackupPath));
             }
         }
+
+        [Fact]
+        public void Load_CorruptRootField_BacksUpAndNotifiesAndResetsSelection()
+        {
+            var path = NewTempStatePath();
+            // Valid envelope, valid lastSelectedId, but root is a file-typed node (invalid: root must be folder).
+            File.WriteAllText(path,
+                "{\"schemaVersion\":1," +
+                "\"lastSelectedId\":\"99e0a4d2-4b5c-4d6e-8f70-112233445566\"," +
+                "\"root\":{\"type\":\"file\",\"id\":\"00000000-0000-0000-0000-000000000001\",\"name\":\"oops\",\"path\":\"C:\\\\x\"}}");
+
+            var observer = new CapturingObserver();
+            using (var store = new StateStore(path, observer))
+            {
+                var root = store.Load();
+
+                Assert.Empty(root.Children);
+                Assert.Null(store.LastSelectedId);
+                Assert.NotNull(observer.CorruptBackupPath);
+                Assert.True(File.Exists(observer.CorruptBackupPath));
+                Assert.False(File.Exists(path));
+            }
+        }
     }
 }
