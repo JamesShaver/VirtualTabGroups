@@ -5,6 +5,7 @@ obj/
 # NuGet
 packages/
 *.nupkg
+nuget.exe
 
 # Visual Studio / Rider / VS Code
 .vs/
