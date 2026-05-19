@@ -6,7 +6,6 @@ namespace VirtualTabGroups.Core
     {
         public Guid Id { get; internal set; } = Guid.NewGuid();
         public string Name { get; internal set; }
-        public TreeNodeModel Parent { get; internal set; }
 
         protected TreeNodeModel(string name)
         {

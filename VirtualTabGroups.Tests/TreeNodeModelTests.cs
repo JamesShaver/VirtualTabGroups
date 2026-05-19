@@ -29,11 +29,5 @@ namespace VirtualTabGroups.Tests
             Assert.Equal(@"C:\repo\User.php", f.Path);
         }
 
-        [Fact]
-        public void Node_ParentIsInitiallyNull()
-        {
-            Assert.Null(new FolderNode("f").Parent);
-            Assert.Null(new FileNode("f", "p").Parent);
-        }
     }
 }
