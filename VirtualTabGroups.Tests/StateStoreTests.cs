@@ -231,5 +231,14 @@ namespace VirtualTabGroups.Tests
                 Assert.Equal("file29.txt", ((FileNode)reloaded.Children[0]).Name);
             }
         }
+
+        [Fact]
+        public void Dispose_CalledTwice_DoesNotThrow()
+        {
+            var path = NewTempStatePath();
+            var store = new StateStore(path);
+            store.Dispose();
+            store.Dispose();  // Must not throw.
+        }
     }
 }

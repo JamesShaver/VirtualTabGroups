@@ -11,6 +11,7 @@ namespace VirtualTabGroups.Core
         private readonly IStateStoreObserver _observer;
         private readonly System.Threading.Timer _debounceTimer;
         private readonly TimeSpan _debounceInterval;
+        private bool _disposed;
 
         public StateStore(string stateFilePath, IStateStoreObserver observer = null)
             : this(stateFilePath, observer, TimeSpan.FromMilliseconds(500)) { }
@@ -90,6 +91,7 @@ namespace VirtualTabGroups.Core
 
         public void MarkDirty(FolderNode root, Guid? selectedId = null)
         {
+            if (_disposed) return;
             if (IsReadOnly) return;
             if (root == null) throw new ArgumentNullException(nameof(root));
 
@@ -128,6 +130,7 @@ namespace VirtualTabGroups.Core
 
         public void Flush()
         {
+            if (_disposed) return;
             if (IsReadOnly) return;
             _debounceTimer.Change(System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);
             WritePendingNow();
@@ -183,8 +186,13 @@ namespace VirtualTabGroups.Core
 
         public void Dispose()
         {
+            if (_disposed) return;
             try { Flush(); }
-            finally { _debounceTimer.Dispose(); }
+            finally
+            {
+                _disposed = true;
+                _debounceTimer.Dispose();
+            }
         }
     }
 }
