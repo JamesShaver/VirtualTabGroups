@@ -17,6 +17,7 @@ namespace VirtualTabGroups.Plugin
         private static NppData _nppData;
         private static StateStore _stateStore;
         private static FolderNode _root;
+        private static NotepadPlusPlusObserver _observer;
 
         // Menu item command IDs.
         private const int CmdId_ShowPanel = 0;
@@ -49,8 +50,8 @@ namespace VirtualTabGroups.Plugin
             Directory.CreateDirectory(pluginConfigDir);
 
             var stateFilePath = Path.Combine(pluginConfigDir, "state.json");
-            _stateStore = new StateStore(stateFilePath, observer: null);
-            // Observer assignment lands in Phase 5.
+            _observer = new NotepadPlusPlusObserver(new WindowsMessageBoxProxy());
+            _stateStore = new StateStore(stateFilePath, _observer);
         }
 
         public static string GetName() => PluginName;
