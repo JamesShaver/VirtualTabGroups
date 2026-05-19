@@ -61,6 +61,7 @@ namespace VirtualTabGroups.Plugin
                 if (ev.Node?.Tag is FileNode f)
                     PluginMain.OpenFile(f.Path);
             };
+            _tree.KeyDown += Tree_KeyDown;
 
             _tree.ContextMenuStrip = _menu;
             _menu.Opening += Menu_Opening;
@@ -362,6 +363,57 @@ namespace VirtualTabGroups.Plugin
                 if (child is FolderNode sub) total += CountDescendants(sub);
             }
             return total;
+        }
+
+        private void Tree_KeyDown(object sender, KeyEventArgs e)
+        {
+            var selected = _tree.SelectedNode;
+            var selectedModel = selected?.Tag as TreeNodeModel;
+
+            if (e.KeyCode == Keys.Enter && selectedModel is FileNode file)
+            {
+                PluginMain.OpenFile(file.Path);
+                e.Handled = true;
+                return;
+            }
+
+            if (e.KeyCode == Keys.F2 && selected != null)
+            {
+                selected.BeginEdit();
+                e.Handled = true;
+                return;
+            }
+
+            if (e.KeyCode == Keys.Delete && selectedModel != null)
+            {
+                OnRemove(selectedModel);
+                e.Handled = true;
+                return;
+            }
+
+            if (e.Control && !e.Shift && !e.Alt && e.KeyCode == Keys.N)
+            {
+                var target = (selectedModel as FolderNode) ?? _root;
+                OnNewFolder(target);
+                e.Handled = true;
+                return;
+            }
+
+            if (e.Control && e.Shift && !e.Alt && e.KeyCode == Keys.A)
+            {
+                var target = (selectedModel as FolderNode) ?? _root;
+                OnAddActive(target);
+                e.Handled = true;
+                return;
+            }
+
+            if (e.Control && e.Shift && e.Alt && e.KeyCode == Keys.A)
+            {
+                var target = (selectedModel as FolderNode) ?? _root;
+                OnAddAllOpen(target);
+                e.Handled = true;
+                return;
+            }
         }
 
         private void ExpandAllUnder(TreeNode tn, bool expand)
