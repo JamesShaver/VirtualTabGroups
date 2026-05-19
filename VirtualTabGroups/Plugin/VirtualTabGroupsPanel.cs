@@ -355,7 +355,7 @@ namespace VirtualTabGroups.Plugin
                 VirtualTabGroups.Plugin.CrashLog.Write("OnAddActive: entered, targetFolder=" + (targetFolder?.Name ?? "<null>"));
                 if (targetFolder == null) return;
 
-                var path = PluginMain.GetCurrentFullPath();
+                var path = PluginMain.GetCurrentFullPathManual();
                 VirtualTabGroups.Plugin.CrashLog.Write("OnAddActive: GetCurrentFullPath returned '" + (path ?? "<null>") + "'");
                 if (string.IsNullOrEmpty(path)) return;
 

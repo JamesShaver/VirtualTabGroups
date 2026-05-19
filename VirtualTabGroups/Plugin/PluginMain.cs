@@ -373,28 +373,41 @@ namespace VirtualTabGroups.Plugin
         [System.Security.SecurityCritical]
         internal static string GetCurrentFullPathManual()
         {
-            CrashLog.Write("GetCurrentFullPathManual: 1 - entered");
-            const int bufSize = 1024;
-            IntPtr buffer = Marshal.AllocHGlobal(bufSize * sizeof(char));
+            CrashLog.Write("GetCurrentFullPathManual: 1 - entered, _nppData._nppHandle=" + _nppData._nppHandle.ToInt64().ToString("X"));
+            const int bufSize = 260;  // MAX_PATH — matches what other Notepad++ plugins use
+            IntPtr buffer = Marshal.AllocHGlobal(bufSize * 2);  // 2 bytes per wchar
+            CrashLog.Write("GetCurrentFullPathManual: 2 - buffer allocated at " + buffer.ToInt64().ToString("X") + ", size=" + (bufSize * 2) + " bytes");
             try
             {
-                CrashLog.Write("GetCurrentFullPathManual: 2 - buffer allocated at " + buffer.ToInt64().ToString("X"));
-                // Zero the buffer so PtrToStringUni reads a clean string on success.
-                for (int i = 0; i < bufSize * sizeof(char); i++) Marshal.WriteByte(buffer, i, 0);
-                CrashLog.Write("GetCurrentFullPathManual: 3 - buffer zeroed, about to SendMessage");
-                Win32.SendMessage(
-                    _nppData._nppHandle,
-                    (int)NppMsg.NPPM_GETFULLCURRENTPATH,
-                    new IntPtr(bufSize),
-                    buffer);
-                CrashLog.Write("GetCurrentFullPathManual: 4 - SendMessage returned");
-                var result = Marshal.PtrToStringUni(buffer);
-                CrashLog.Write("GetCurrentFullPathManual: 5 - PtrToStringUni='" + (result ?? "<null>") + "'");
-                return result ?? string.Empty;
+                // Zero the buffer to detect partial writes
+                for (int i = 0; i < bufSize * 2; i++) Marshal.WriteByte(buffer, i, 0);
+                CrashLog.Write("GetCurrentFullPathManual: 3 - buffer zeroed");
+
+                CrashLog.Write("GetCurrentFullPathManual: 4 - about to SendMessage NPPM_GETFULLCURRENTPATH (" + (int)NppMsg.NPPM_GETFULLCURRENTPATH + ")");
+                IntPtr result;
+                try
+                {
+                    result = Win32.SendMessage(
+                        _nppData._nppHandle,
+                        (int)NppMsg.NPPM_GETFULLCURRENTPATH,
+                        new IntPtr(bufSize),
+                        buffer);
+                }
+                catch (Exception ex)
+                {
+                    CrashLog.WriteException("GetCurrentFullPathManual SendMessage", ex);
+                    throw;
+                }
+                CrashLog.Write("GetCurrentFullPathManual: 5 - SendMessage returned " + result.ToInt64());
+
+                var str = Marshal.PtrToStringUni(buffer);
+                CrashLog.Write("GetCurrentFullPathManual: 6 - PtrToStringUni='" + (str ?? "<null>") + "'");
+                return str ?? string.Empty;
             }
             finally
             {
                 Marshal.FreeHGlobal(buffer);
+                CrashLog.Write("GetCurrentFullPathManual: 7 - buffer freed");
             }
         }
 
