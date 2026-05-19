@@ -36,8 +36,15 @@ namespace VirtualTabGroups.Core
             // Tasks 7 and 8 add corrupt/future-version handling.
             // For now, parse v1 only.
             LastSelectedId = (Guid?)envelope["lastSelectedId"];
-            var root = envelope["root"].ToObject<TreeNodeModel>(JsonSerializer.Create(settings));
-            return (FolderNode)root;
+
+            var rootToken = envelope["root"]
+                ?? throw new JsonException("state.json envelope is missing required 'root' property.");
+            var rootNode = rootToken.ToObject<TreeNodeModel>(JsonSerializer.Create(settings));
+            if (!(rootNode is FolderNode folder))
+            {
+                throw new JsonException("state.json root must be a folder node, not a file.");
+            }
+            return folder;
         }
 
         public void Dispose() { }
