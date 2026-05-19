@@ -19,6 +19,7 @@ namespace VirtualTabGroups.Plugin
         private static StateStore _stateStore;
         private static FolderNode _root;
         private static NotepadPlusPlusObserver _observer;
+        private static VirtualTabGroupsPanel _panel;
 
         internal static ThemeManager Theme { get; private set; }
 
@@ -162,7 +163,33 @@ namespace VirtualTabGroups.Plugin
 
         private static void OnShowPanel()
         {
-            // Phase 7 Task 22 wires the panel toggle.
+            if (_panel == null)
+            {
+                _panel = new VirtualTabGroupsPanel();
+                _panel.Show();
+                _panel.Tree.AttachTheme(Theme);
+
+                _panel.RegisterAsDockedPanel(
+                    nppHandle: _nppData._nppHandle,
+                    moduleName: "VirtualTabGroups",
+                    caption: PluginName,
+                    cmdId: CmdId_ShowPanel,
+                    dockingFlags: NppTbMsg.DWS_DF_CONT_LEFT,
+                    iconHandle: IntPtr.Zero);
+
+                Win32.SendMessage(_nppData._nppHandle,
+                    (int)NppMsg.NPPM_DARKMODESUBCLASSANDTHEME,
+                    new IntPtr(1),
+                    _panel.Handle);
+
+                _panel.BindRoot(_root, _stateStore, _stateStore.LastSelectedId);
+                return;
+            }
+
+            if (_panel.Visible)
+                _panel.HideDocked(_nppData._nppHandle);
+            else
+                _panel.ShowDocked(_nppData._nppHandle);
         }
 
         private static void OnAbout()
