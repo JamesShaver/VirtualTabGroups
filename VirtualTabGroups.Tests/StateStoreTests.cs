@@ -77,5 +77,40 @@ namespace VirtualTabGroups.Tests
                     store.LastSelectedId);
             }
         }
+
+        private sealed class CapturingObserver : IStateStoreObserver
+        {
+            public string CorruptBackupPath;
+            public int? FutureSchemaSeen;
+            public int? CurrentSchemaSeen;
+            public System.Exception SaveError;
+
+            public void OnRecoveredFromCorruptFile(string backupPath) => CorruptBackupPath = backupPath;
+            public void OnFutureSchemaVersion(int versionFound, int currentVersion)
+            {
+                FutureSchemaSeen = versionFound;
+                CurrentSchemaSeen = currentVersion;
+            }
+            public void OnSaveFailed(System.Exception ex) => SaveError = ex;
+        }
+
+        [Fact]
+        public void Load_CorruptFile_BacksUpAndNotifiesAndReturnsEmptyRoot()
+        {
+            var path = NewTempStatePath();
+            File.WriteAllText(path, "this is not json {");
+
+            var observer = new CapturingObserver();
+            using (var store = new StateStore(path, observer))
+            {
+                var root = store.Load();
+
+                Assert.Empty(root.Children);
+                Assert.NotNull(observer.CorruptBackupPath);
+                Assert.True(File.Exists(observer.CorruptBackupPath), "backup file should exist on disk");
+                Assert.False(File.Exists(path), "original corrupt file should have been moved");
+                Assert.StartsWith(Path.GetFileName(path) + ".corrupt-", Path.GetFileName(observer.CorruptBackupPath));
+            }
+        }
     }
 }

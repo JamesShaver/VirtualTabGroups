@@ -25,26 +25,59 @@ namespace VirtualTabGroups.Core
                 return new FolderNode("");
             }
 
-            var json = File.ReadAllText(_stateFilePath);
-            var settings = new JsonSerializerSettings
+            var settings = new JsonSerializerSettings { Converters = { new NodeJsonConverter() } };
+
+            JObject envelope;
+            try
             {
-                Converters = { new NodeJsonConverter() },
-            };
-
-            var envelope = JsonConvert.DeserializeObject<JObject>(json);
-
-            // Tasks 7 and 8 add corrupt/future-version handling.
-            // For now, parse v1 only.
-            LastSelectedId = (Guid?)envelope["lastSelectedId"];
-
-            var rootToken = envelope["root"]
-                ?? throw new JsonException("state.json envelope is missing required 'root' property.");
-            var rootNode = rootToken.ToObject<TreeNodeModel>(JsonSerializer.Create(settings));
-            if (!(rootNode is FolderNode folder))
-            {
-                throw new JsonException("state.json root must be a folder node, not a file.");
+                var json = File.ReadAllText(_stateFilePath);
+                envelope = JsonConvert.DeserializeObject<JObject>(json);
+                if (envelope == null) throw new JsonSerializationException("empty envelope");
             }
-            return folder;
+            catch (Exception)
+            {
+                var backupPath = BackupCorruptFile();
+                _observer?.OnRecoveredFromCorruptFile(backupPath);
+                return new FolderNode("");
+            }
+
+            // Task 8: handle schemaVersion > 1 here.
+            LastSelectedId = (Guid?)envelope["lastSelectedId"];
+            try
+            {
+                var rootToken = envelope["root"]
+                    ?? throw new JsonException("state.json envelope is missing required 'root' property.");
+                var rootNode = rootToken.ToObject<TreeNodeModel>(JsonSerializer.Create(settings));
+                if (!(rootNode is FolderNode folder))
+                {
+                    throw new JsonException("state.json root must be a folder node, not a file.");
+                }
+                return folder;
+            }
+            catch (Exception)
+            {
+                var backupPath = BackupCorruptFile();
+                _observer?.OnRecoveredFromCorruptFile(backupPath);
+                LastSelectedId = null;
+                return new FolderNode("");
+            }
+        }
+
+        private string BackupCorruptFile()
+        {
+            var suffix = ".corrupt-" + DateTime.Now.ToString("yyyyMMdd-HHmmss");
+            var backupPath = _stateFilePath + suffix;
+
+            // Disambiguate if two corruption events land in the same second.
+            int n = 0;
+            while (File.Exists(backupPath))
+            {
+                n++;
+                backupPath = _stateFilePath + suffix + "-" + n;
+            }
+
+            File.Move(_stateFilePath, backupPath);
+            return backupPath;
         }
 
         public void Dispose() { }
