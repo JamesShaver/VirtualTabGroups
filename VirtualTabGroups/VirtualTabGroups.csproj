@@ -7,7 +7,7 @@
     <ProjectGuid>{DFB2432F-5C55-4D76-A7FA-934881E5D60A}</ProjectGuid>
     <OutputType>Library</OutputType>
     <RootNamespace>VirtualTabGroups</RootNamespace>
-    <AssemblyName>VirtualTabGroups</AssemblyName>
+    <AssemblyName>VirtualTabGroups.Managed</AssemblyName>
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <Deterministic>true</Deterministic>
