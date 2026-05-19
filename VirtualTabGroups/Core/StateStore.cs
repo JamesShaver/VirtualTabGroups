@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace VirtualTabGroups.Core
 {
@@ -22,8 +24,20 @@ namespace VirtualTabGroups.Core
             {
                 return new FolderNode("");
             }
-            // Parsing comes in Task 6.
-            throw new NotImplementedException();
+
+            var json = File.ReadAllText(_stateFilePath);
+            var settings = new JsonSerializerSettings
+            {
+                Converters = { new NodeJsonConverter() },
+            };
+
+            var envelope = JsonConvert.DeserializeObject<JObject>(json);
+
+            // Tasks 7 and 8 add corrupt/future-version handling.
+            // For now, parse v1 only.
+            LastSelectedId = (Guid?)envelope["lastSelectedId"];
+            var root = envelope["root"].ToObject<TreeNodeModel>(JsonSerializer.Create(settings));
+            return (FolderNode)root;
         }
 
         public void Dispose() { }
