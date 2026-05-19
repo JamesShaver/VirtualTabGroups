@@ -20,6 +20,10 @@ namespace VirtualTabGroups.Plugin
         private TreeNode _hoverNode;
         private readonly Timer _hoverTimer = new Timer { Interval = 500 };
 
+        // Drag-drop: auto-scroll state.
+        private readonly Timer _scrollTimer = new Timer { Interval = 100 };
+        private int _scrollDirection;
+
         public DarkAwareTreeView Tree => _tree;
 
         public VirtualTabGroupsPanel()
@@ -66,6 +70,15 @@ namespace VirtualTabGroups.Plugin
                 _hoverTimer.Stop();
                 if (_hoverNode != null && _hoverNode.Tag is FolderNode && !_hoverNode.IsExpanded)
                     _hoverNode.Expand();
+            };
+
+            // Auto-scroll timer.
+            _scrollTimer.Tick += (s, ev) =>
+            {
+                if (_scrollDirection == 0 || _tree.Nodes.Count == 0) return;
+                var node = _tree.TopNode;
+                if (_scrollDirection < 0 && node?.PrevVisibleNode != null) _tree.TopNode = node.PrevVisibleNode;
+                else if (_scrollDirection > 0 && node?.NextVisibleNode != null) _tree.TopNode = node.NextVisibleNode;
             };
 
             try
@@ -347,7 +360,7 @@ namespace VirtualTabGroups.Plugin
         }
 
         // ──────────────────────────────────────────────
-        // Drag-and-drop support (Tasks 32–33)
+        // Drag-and-drop support (Tasks 32–34)
         // ──────────────────────────────────────────────
 
         private enum DropPosition { Above, Into, Below, None }
@@ -397,12 +410,19 @@ namespace VirtualTabGroups.Plugin
                 _hoverNode = null;
                 _hoverTimer.Stop();
             }
+
+            // Auto-scroll near edges.
+            const int margin = 20;
+            if (clientPoint.Y < margin) { _scrollDirection = -1; _scrollTimer.Start(); }
+            else if (clientPoint.Y > _tree.Height - margin) { _scrollDirection = 1; _scrollTimer.Start(); }
+            else { _scrollDirection = 0; _scrollTimer.Stop(); }
         }
 
         private void Tree_DragDrop(object sender, DragEventArgs e)
         {
             _hoverTimer.Stop();
             _hoverNode = null;
+            _scrollTimer.Stop();
 
             if (!e.Data.GetDataPresent(typeof(TreeNode))) return;
 
@@ -461,6 +481,7 @@ namespace VirtualTabGroups.Plugin
             {
                 _icons.Dispose();
                 _hoverTimer.Dispose();
+                _scrollTimer.Dispose();
             }
             base.Dispose(disposing);
         }
