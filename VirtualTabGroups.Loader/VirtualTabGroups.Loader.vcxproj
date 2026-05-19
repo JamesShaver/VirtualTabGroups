@@ -72,11 +72,9 @@
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
-      <!-- mscoree.lib is not included in VS Build Tools by default; the generated
-           import stub in this directory (produced from C:\Windows\System32\mscoree.dll)
-           satisfies the /clr linker dependency. -->
-      <AdditionalLibraryDirectories>$(MSBuildThisFileDirectory)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>mscoree.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <!-- mscoree.lib is regenerated at build time by GenerateMscoreeImportLibrary
+           from the committed mscoree.def; it is not tracked in source control. -->
+      <AdditionalDependencies>$(IntDir)mscoree.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
 
@@ -93,6 +91,10 @@
       <UseLibraryDependencyInputs>false</UseLibraryDependencyInputs>
     </ProjectReference>
   </ItemGroup>
+
+  <Target Name="GenerateMscoreeImportLibrary" BeforeTargets="Link">
+    <Exec Command="lib.exe /nologo /def:&quot;$(MSBuildThisFileDirectory)mscoree.def&quot; /out:&quot;$(IntDir)mscoree.lib&quot; /machine:$(Platform)" />
+  </Target>
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>
