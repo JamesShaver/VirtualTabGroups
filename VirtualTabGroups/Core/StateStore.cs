@@ -78,6 +78,59 @@ namespace VirtualTabGroups.Core
             }
         }
 
+        private string _pendingJson;
+        private readonly object _writeLock = new object();
+
+        public void MarkDirty(FolderNode root, Guid? selectedId = null)
+        {
+            if (IsReadOnly) return;
+            if (root == null) throw new ArgumentNullException(nameof(root));
+
+            var settings = new JsonSerializerSettings
+            {
+                Converters = { new NodeJsonConverter() },
+                Formatting = Formatting.Indented,
+            };
+
+            var envelope = new JObject
+            {
+                ["schemaVersion"] = CurrentSchemaVersion,
+                ["lastSelectedId"] = selectedId.HasValue ? selectedId.Value.ToString() : null,
+                ["root"] = JToken.FromObject(root, JsonSerializer.Create(settings)),
+            };
+
+            _pendingJson = envelope.ToString(Formatting.Indented);
+        }
+
+        public void Flush()
+        {
+            if (IsReadOnly) return;
+            WritePendingNow();
+        }
+
+        private void WritePendingNow()
+        {
+            string json;
+            lock (_writeLock)
+            {
+                json = _pendingJson;
+                if (json == null) return;
+                _pendingJson = null;
+            }
+
+            var tmpPath = _stateFilePath + ".tmp";
+            File.WriteAllText(tmpPath, json, new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+
+            if (File.Exists(_stateFilePath))
+            {
+                File.Replace(tmpPath, _stateFilePath, destinationBackupFileName: null);
+            }
+            else
+            {
+                File.Move(tmpPath, _stateFilePath);
+            }
+        }
+
         private string BackupCorruptFile()
         {
             var suffix = ".corrupt-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmssZ");
@@ -103,6 +156,6 @@ namespace VirtualTabGroups.Core
             }
         }
 
-        public void Dispose() { }
+        public void Dispose() => Flush();
     }
 }

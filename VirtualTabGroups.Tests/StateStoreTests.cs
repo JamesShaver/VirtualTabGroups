@@ -158,5 +158,51 @@ namespace VirtualTabGroups.Tests
             // File on disk must be unchanged (we did not overwrite the user's newer data).
             Assert.Equal(originalContent, File.ReadAllText(path));
         }
+
+        [Fact]
+        public void Save_AndReloadInNewStore_PreservesTree()
+        {
+            var path = NewTempStatePath();
+
+            var root = new FolderNode("");
+            var auth = new FolderNode("Auth") { Expanded = true };
+            auth.Children.Add(new FileNode("User.php", @"C:\src\User.php"));
+            root.Children.Add(auth);
+
+            var selectedId = auth.Children[0].Id;
+
+            using (var store = new StateStore(path))
+            {
+                store.MarkDirty(root, selectedId);
+                store.Flush();
+            }
+
+            // Reload in a fresh store.
+            using (var store2 = new StateStore(path))
+            {
+                var reloaded = store2.Load();
+                Assert.Single(reloaded.Children);
+                var authBack = (FolderNode)reloaded.Children[0];
+                Assert.Equal("Auth", authBack.Name);
+                Assert.True(authBack.Expanded);
+                Assert.Single(authBack.Children);
+                Assert.Equal("User.php", ((FileNode)authBack.Children[0]).Name);
+                Assert.Equal(selectedId, store2.LastSelectedId);
+            }
+        }
+
+        [Fact]
+        public void Save_AtomicWrite_LeavesNoTempFile()
+        {
+            var path = NewTempStatePath();
+            using (var store = new StateStore(path))
+            {
+                store.MarkDirty(new FolderNode(""), null);
+                store.Flush();
+            }
+
+            Assert.True(File.Exists(path));
+            Assert.False(File.Exists(path + ".tmp"));
+        }
     }
 }
