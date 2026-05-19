@@ -65,6 +65,7 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Core\StateStore.cs" />
     <Compile Include="Core\IStateStoreObserver.cs" />
     <Compile Include="Core\NodeJsonConverter.cs" />
     <Compile Include="Core\TreeNodeModel.cs" />
