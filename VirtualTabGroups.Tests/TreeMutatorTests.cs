@@ -42,5 +42,45 @@ namespace VirtualTabGroups.Tests
             Assert.Null(added);
             Assert.Single(folder.Children);
         }
+
+        [Fact]
+        public void RemoveNode_FileInFolder_RemovesFromContainer()
+        {
+            var root = new FolderNode("");
+            var auth = new FolderNode("Auth");
+            var user = new FileNode("User.php", @"C:\a\User.php");
+            auth.Children.Add(user);
+            root.Children.Add(auth);
+
+            bool removed = TreeMutator.RemoveNode(user, root);
+
+            Assert.True(removed);
+            Assert.Empty(auth.Children);
+        }
+
+        [Fact]
+        public void RemoveNode_FolderInRoot_RemovesEntireSubtree()
+        {
+            var root = new FolderNode("");
+            var auth = new FolderNode("Auth");
+            auth.Children.Add(new FileNode("User.php", @"C:\a\User.php"));
+            root.Children.Add(auth);
+
+            bool removed = TreeMutator.RemoveNode(auth, root);
+
+            Assert.True(removed);
+            Assert.Empty(root.Children);
+        }
+
+        [Fact]
+        public void RemoveNode_NodeNotInTree_ReturnsFalse()
+        {
+            var root = new FolderNode("");
+            var orphan = new FileNode("X.txt", @"C:\X.txt");
+
+            bool removed = TreeMutator.RemoveNode(orphan, root);
+
+            Assert.False(removed);
+        }
     }
 }

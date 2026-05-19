@@ -25,5 +25,38 @@ namespace VirtualTabGroups.Core
             folder.Children.Add(fileNode);
             return fileNode;
         }
+
+        /// <summary>
+        /// Removes the given node from whichever folder contains it. Walks from root.
+        /// Returns true if the node was found and removed; false if not in the tree.
+        /// </summary>
+        public static bool RemoveNode(TreeNodeModel node, FolderNode root)
+        {
+            if (node == null) throw new ArgumentNullException(nameof(node));
+            if (root == null) throw new ArgumentNullException(nameof(root));
+
+            var container = FindContainer(root, node);
+            if (container == null) return false;
+
+            container.Children.Remove(node);
+            return true;
+        }
+
+        /// <summary>
+        /// Walks the tree from root, returning the folder that directly contains the target node, or null if not found.
+        /// </summary>
+        public static FolderNode FindContainer(FolderNode root, TreeNodeModel target)
+        {
+            if (root.Children.Contains(target)) return root;
+            foreach (var child in root.Children)
+            {
+                if (child is FolderNode subFolder)
+                {
+                    var found = FindContainer(subFolder, target);
+                    if (found != null) return found;
+                }
+            }
+            return null;
+        }
     }
 }
