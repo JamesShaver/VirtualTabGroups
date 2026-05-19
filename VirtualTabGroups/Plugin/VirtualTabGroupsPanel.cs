@@ -33,6 +33,16 @@ namespace VirtualTabGroups.Plugin
             _tree.AfterCollapse += Tree_AfterCollapse;
             _tree.AfterLabelEdit += Tree_AfterLabelEdit;
 
+            try
+            {
+                using (var stream = GetType().Assembly.GetManifestResourceStream(
+                    "VirtualTabGroups.Plugin.Resources.plugin.ico"))
+                {
+                    if (stream != null) Icon = new System.Drawing.Icon(stream);
+                }
+            }
+            catch { /* missing icon resource is non-fatal */ }
+
             Controls.Add(_tree);
         }
 
