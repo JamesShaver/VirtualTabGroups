@@ -404,6 +404,28 @@ namespace VirtualTabGroups.Plugin
 
             e.Effect = DragDropEffects.Move;
 
+            // Insertion-line indicator.
+            if (target != null)
+            {
+                var position = ComputeDropPosition(target, clientPoint);
+                switch (position)
+                {
+                    case DropPosition.Above:
+                        _tree.ShowInsertionLine(target.Bounds.Top);
+                        break;
+                    case DropPosition.Below:
+                        _tree.ShowInsertionLine(target.Bounds.Bottom);
+                        break;
+                    default:
+                        _tree.ClearInsertionLine();
+                        break;
+                }
+            }
+            else
+            {
+                _tree.ClearInsertionLine();
+            }
+
             // Hover-timer management for auto-expand.
             if (target != null && target != _hoverNode)
             {
@@ -429,6 +451,7 @@ namespace VirtualTabGroups.Plugin
             _hoverTimer.Stop();
             _hoverNode = null;
             _scrollTimer.Stop();
+            _tree.ClearInsertionLine();
 
             if (!e.Data.GetDataPresent(typeof(TreeNode))) return;
 

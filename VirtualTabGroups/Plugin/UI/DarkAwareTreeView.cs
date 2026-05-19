@@ -103,6 +103,30 @@ namespace VirtualTabGroups.Plugin.UI
             }
         }
 
+        private Rectangle? _insertionLine;
+
+        public void ShowInsertionLine(int y)
+        {
+            _insertionLine = new Rectangle(0, y, Width, 1);
+            Invalidate();
+        }
+
+        public void ClearInsertionLine()
+        {
+            _insertionLine = null;
+            Invalidate();
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            if (_insertionLine != null && _theme != null)
+            {
+                using (var pen = new Pen(_theme.HotEdge, 2))
+                    e.Graphics.DrawLine(pen, _insertionLine.Value.Left, _insertionLine.Value.Top, _insertionLine.Value.Right, _insertionLine.Value.Top);
+            }
+        }
+
         protected override void OnMouseDown(MouseEventArgs e)
         {
             base.OnMouseDown(e);
