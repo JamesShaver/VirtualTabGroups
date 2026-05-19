@@ -69,8 +69,25 @@ namespace VirtualTabGroups.Plugin
 
         public static void BeNotified(IntPtr notifyCodePtr)
         {
-            // Phase 4 Task 15 wires the notification dispatch here.
-            _ = notifyCodePtr;
+            var notification = (SCNotification)Marshal.PtrToStructure(notifyCodePtr, typeof(SCNotification));
+            switch ((NppNotif)notification.nmhdr.code)
+            {
+                case NppNotif.NPPN_READY:
+                    OnNppReady();
+                    break;
+
+                case NppNotif.NPPN_FILECLOSED:
+                    // Phase 10 wires auto-removal here.
+                    break;
+
+                case NppNotif.NPPN_DARKMODECHANGED:
+                    // Phase 6 wires theme refresh here.
+                    break;
+
+                case NppNotif.NPPN_SHUTDOWN:
+                    OnNppShutdown();
+                    break;
+            }
         }
 
         public static IntPtr MessageProc(uint msg, IntPtr wParam, IntPtr lParam) => IntPtr.Zero;
@@ -84,6 +101,20 @@ namespace VirtualTabGroups.Plugin
         {
             get => _root;
             set => _root = value;
+        }
+
+        // ---- Notification handlers ----
+
+        private static void OnNppReady()
+        {
+            if (_stateStore == null) return;
+            _root = _stateStore.Load();
+        }
+
+        private static void OnNppShutdown()
+        {
+            try { _stateStore?.Flush(); }
+            finally { _stateStore?.Dispose(); }
         }
 
         // ---- Helpers ----
