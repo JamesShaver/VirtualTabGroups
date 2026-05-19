@@ -17,6 +17,8 @@ namespace VirtualTabGroups.Core
         }
 
         public Guid? LastSelectedId { get; private set; }
+        public bool IsReadOnly { get; private set; }
+        private const int CurrentSchemaVersion = 1;
 
         public FolderNode Load()
         {
@@ -44,7 +46,14 @@ namespace VirtualTabGroups.Core
                 return new FolderNode("");
             }
 
-            // Task 8: handle schemaVersion > 1 here.
+            var schemaVersion = (int?)envelope["schemaVersion"] ?? CurrentSchemaVersion;
+            if (schemaVersion > CurrentSchemaVersion)
+            {
+                IsReadOnly = true;
+                _observer?.OnFutureSchemaVersion(schemaVersion, CurrentSchemaVersion);
+                return new FolderNode("");
+            }
+
             LastSelectedId = (Guid?)envelope["lastSelectedId"];
             try
             {

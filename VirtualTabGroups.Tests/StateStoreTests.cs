@@ -135,5 +135,28 @@ namespace VirtualTabGroups.Tests
                 Assert.False(File.Exists(path));
             }
         }
+
+        [Fact]
+        public void Load_FutureSchemaVersion_NotifiesAndEntersReadOnlyMode()
+        {
+            var path = NewTempStatePath();
+            File.WriteAllText(path,
+                "{\"schemaVersion\":2,\"root\":{\"type\":\"folder\",\"id\":\"11111111-1111-1111-1111-111111111111\",\"name\":\"\",\"children\":[]}}");
+
+            var originalContent = File.ReadAllText(path);
+            var observer = new CapturingObserver();
+
+            using (var store = new StateStore(path, observer))
+            {
+                var root = store.Load();
+                Assert.Empty(root.Children);
+                Assert.Equal(2, observer.FutureSchemaSeen);
+                Assert.Equal(1, observer.CurrentSchemaSeen);
+                Assert.True(store.IsReadOnly);
+            }
+
+            // File on disk must be unchanged (we did not overwrite the user's newer data).
+            Assert.Equal(originalContent, File.ReadAllText(path));
+        }
     }
 }
