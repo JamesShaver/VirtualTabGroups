@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using RGiesecke.DllExport;
@@ -37,6 +38,9 @@ namespace VirtualTabGroups.Plugin
         // for the lifetime of the process; a managed string reference would be moved/collected.
         private static IntPtr _namePtr = IntPtr.Zero;
 
+        // Guards against installing the AssemblyResolve handler more than once.
+        private static bool _resolverInstalled;
+
         // Cached delegates so GC doesn't collect them between Notepad++ menu invocations.
         private static Action _showPanelDelegate;
         private static Action _aboutDelegate;
@@ -54,21 +58,30 @@ namespace VirtualTabGroups.Plugin
         [DllExport("setInfo", CallingConvention = CallingConvention.Cdecl)]
         public static void setInfo(NppData nppData)
         {
-            _nppData = nppData;
+            // Must run before any managed dependency (Newtonsoft.Json, etc.) is JIT-compiled.
+            InstallAssemblyResolverOnce();
+            try
+            {
+                _nppData = nppData;
 
-            var configDirBuilder = new StringBuilder(512);
-            Win32.SendMessageStringBuilder(
-                _nppData._nppHandle,
-                (int)NppMsg.NPPM_GETPLUGINSCONFIGDIR,
-                new IntPtr(configDirBuilder.Capacity),
-                configDirBuilder);
+                var configDirBuilder = new StringBuilder(512);
+                Win32.SendMessageStringBuilder(
+                    _nppData._nppHandle,
+                    (int)NppMsg.NPPM_GETPLUGINSCONFIGDIR,
+                    new IntPtr(configDirBuilder.Capacity),
+                    configDirBuilder);
 
-            var pluginConfigDir = Path.Combine(configDirBuilder.ToString(), "VirtualTabGroups");
-            Directory.CreateDirectory(pluginConfigDir);
+                var pluginConfigDir = Path.Combine(configDirBuilder.ToString(), "VirtualTabGroups");
+                Directory.CreateDirectory(pluginConfigDir);
 
-            var stateFilePath = Path.Combine(pluginConfigDir, "state.json");
-            _observer = new NotepadPlusPlusObserver(new WindowsMessageBoxProxy());
-            _stateStore = new StateStore(stateFilePath, _observer);
+                var stateFilePath = Path.Combine(pluginConfigDir, "state.json");
+                _observer = new NotepadPlusPlusObserver(new WindowsMessageBoxProxy());
+                _stateStore = new StateStore(stateFilePath, _observer);
+            }
+            catch (Exception ex)
+            {
+                ReportCrash("setInfo", ex);
+            }
         }
 
         /// <summary>
@@ -79,9 +92,17 @@ namespace VirtualTabGroups.Plugin
         [DllExport("getName", CallingConvention = CallingConvention.Cdecl)]
         public static IntPtr getName()
         {
-            if (_namePtr == IntPtr.Zero)
-                _namePtr = Marshal.StringToHGlobalUni(PluginName);
-            return _namePtr;
+            try
+            {
+                if (_namePtr == IntPtr.Zero)
+                    _namePtr = Marshal.StringToHGlobalUni(PluginName);
+                return _namePtr;
+            }
+            catch (Exception ex)
+            {
+                ReportCrash("getName", ex);
+                return IntPtr.Zero;
+            }
         }
 
         /// <summary>
@@ -91,38 +112,58 @@ namespace VirtualTabGroups.Plugin
         [DllExport("getFuncsArray", CallingConvention = CallingConvention.Cdecl)]
         public static IntPtr getFuncsArray(IntPtr nbFPtr)
         {
-            if (_funcItemsPtr == IntPtr.Zero) BuildFuncItems();
-            if (nbFPtr != IntPtr.Zero)
-                Marshal.WriteInt32(nbFPtr, FuncItemCount);
-            return _funcItemsPtr;
+            try
+            {
+                if (_funcItemsPtr == IntPtr.Zero) BuildFuncItems();
+                if (nbFPtr != IntPtr.Zero)
+                    Marshal.WriteInt32(nbFPtr, FuncItemCount);
+                return _funcItemsPtr;
+            }
+            catch (Exception ex)
+            {
+                ReportCrash("getFuncsArray", ex);
+                if (nbFPtr != IntPtr.Zero) Marshal.WriteInt32(nbFPtr, 0);
+                return IntPtr.Zero;
+            }
         }
 
         [DllExport("beNotified", CallingConvention = CallingConvention.Cdecl)]
         public static void beNotified(IntPtr notifyCodePtr)
         {
-            var notification = (SCNotification)Marshal.PtrToStructure(notifyCodePtr, typeof(SCNotification));
-            switch ((NppNotif)notification.nmhdr.code)
+            try
             {
-                case NppNotif.NPPN_READY:
-                    OnNppReady();
-                    break;
+                var notification = (SCNotification)Marshal.PtrToStructure(notifyCodePtr, typeof(SCNotification));
+                switch ((NppNotif)notification.nmhdr.code)
+                {
+                    case NppNotif.NPPN_READY:
+                        OnNppReady();
+                        break;
 
-                case NppNotif.NPPN_FILECLOSED:
-                    OnFileClosed(notification.nmhdr.idFrom);
-                    break;
+                    case NppNotif.NPPN_FILECLOSED:
+                        OnFileClosed(notification.nmhdr.idFrom);
+                        break;
 
-                case NppNotif.NPPN_DARKMODECHANGED:
-                    Theme?.RefreshColors();
-                    break;
+                    case NppNotif.NPPN_DARKMODECHANGED:
+                        Theme?.RefreshColors();
+                        break;
 
-                case NppNotif.NPPN_SHUTDOWN:
-                    OnNppShutdown();
-                    break;
+                    case NppNotif.NPPN_SHUTDOWN:
+                        OnNppShutdown();
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                ReportCrash("beNotified", ex);
             }
         }
 
         [DllExport("messageProc", CallingConvention = CallingConvention.Cdecl)]
-        public static IntPtr messageProc(uint msg, IntPtr wParam, IntPtr lParam) => IntPtr.Zero;
+        public static IntPtr messageProc(uint msg, IntPtr wParam, IntPtr lParam)
+        {
+            try { return IntPtr.Zero; }
+            catch (Exception ex) { ReportCrash("messageProc", ex); return IntPtr.Zero; }
+        }
 
         // ---- State accessors (used by future phases) ----
 
@@ -153,6 +194,64 @@ namespace VirtualTabGroups.Plugin
         }
 
         // ---- Helpers ----
+
+        /// <summary>
+        /// Installs an AssemblyResolve handler that locates managed dependencies
+        /// (Newtonsoft.Json.dll, etc.) in this DLL's own directory rather than the
+        /// CLR's default probe path (which is the host EXE's directory — Notepad++'s
+        /// install folder — and does NOT contain our plugin's dependencies).
+        /// </summary>
+        private static void InstallAssemblyResolverOnce()
+        {
+            if (_resolverInstalled) return;
+            _resolverInstalled = true;
+
+            string pluginDir;
+            try { pluginDir = Path.GetDirectoryName(typeof(PluginMain).Assembly.Location); }
+            catch { return; }
+
+            if (string.IsNullOrEmpty(pluginDir)) return;
+
+            AppDomain.CurrentDomain.AssemblyResolve += (object sender, ResolveEventArgs args) =>
+            {
+                try
+                {
+                    var requested = new AssemblyName(args.Name);
+                    var candidate = Path.Combine(pluginDir, requested.Name + ".dll");
+                    if (File.Exists(candidate))
+                        return Assembly.LoadFrom(candidate);
+                }
+                catch { }
+                return null;
+            };
+        }
+
+        /// <summary>
+        /// Shows a fatal-error MessageBox so the user knows what went wrong instead of
+        /// Notepad++ crashing silently. Best-effort — uses the observer's save-failure
+        /// path if available, otherwise falls back to a direct MessageBox call.
+        /// </summary>
+        private static void ReportCrash(string source, Exception ex)
+        {
+            try
+            {
+                var message = source + " failed: " + ex.GetType().Name + ": " + ex.Message
+                              + "\n\n" + ex.StackTrace;
+                if (_observer != null)
+                {
+                    _observer.OnSaveFailed(ex);
+                }
+                else
+                {
+                    System.Windows.Forms.MessageBox.Show(
+                        message,
+                        "Virtual Tab Groups error",
+                        System.Windows.Forms.MessageBoxButtons.OK,
+                        System.Windows.Forms.MessageBoxIcon.Error);
+                }
+            }
+            catch { /* last-resort: swallow */ }
+        }
 
         /// <summary>
         /// Allocates a ShortcutKey struct in unmanaged memory and returns a pointer to it.
