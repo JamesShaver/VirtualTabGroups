@@ -49,7 +49,8 @@ namespace VirtualTabGroups.Core
                 var backupPath = BackupCorruptFile();
                 if (backupPath != null)
                 {
-                    _observer?.OnRecoveredFromCorruptFile(backupPath);
+                    try { _observer?.OnRecoveredFromCorruptFile(backupPath); }
+                    catch { /* swallow observer exceptions — never let host code propagate through Load(). */ }
                 }
                 return new FolderNode("");
             }
@@ -58,7 +59,8 @@ namespace VirtualTabGroups.Core
             if (schemaVersion > CurrentSchemaVersion)
             {
                 IsReadOnly = true;
-                _observer?.OnFutureSchemaVersion(schemaVersion, CurrentSchemaVersion);
+                try { _observer?.OnFutureSchemaVersion(schemaVersion, CurrentSchemaVersion); }
+                catch { /* swallow observer exceptions — never let host code propagate through Load(). */ }
                 return new FolderNode("");
             }
 
@@ -79,7 +81,8 @@ namespace VirtualTabGroups.Core
                 var backupPath = BackupCorruptFile();
                 if (backupPath != null)
                 {
-                    _observer?.OnRecoveredFromCorruptFile(backupPath);
+                    try { _observer?.OnRecoveredFromCorruptFile(backupPath); }
+                    catch { /* swallow observer exceptions — never let host code propagate through Load(). */ }
                 }
                 LastSelectedId = null;
                 return new FolderNode("");
@@ -148,7 +151,8 @@ namespace VirtualTabGroups.Core
             }
             catch (Exception ex)
             {
-                _observer?.OnSaveFailed(ex);
+                try { _observer?.OnSaveFailed(ex); }
+                catch { /* swallow observer exceptions — never let host code crash the timer thread. */ }
                 // Leave _pendingJson set so the next MarkDirty or Flush retries.
             }
         }

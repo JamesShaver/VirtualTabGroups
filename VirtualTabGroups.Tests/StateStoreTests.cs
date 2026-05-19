@@ -263,5 +263,31 @@ namespace VirtualTabGroups.Tests
                 store.MarkDirty(new FolderNode(""), null);
             }
         }
+
+        private sealed class ThrowingObserver : IStateStoreObserver
+        {
+            public void OnRecoveredFromCorruptFile(string backupPath) => throw new System.InvalidOperationException("boom");
+            public void OnFutureSchemaVersion(int versionFound, int currentVersion) => throw new System.InvalidOperationException("boom");
+            public void OnSaveFailed(System.Exception ex) => throw new System.InvalidOperationException("boom");
+        }
+
+        [Fact]
+        public void Save_ObserverThrows_DoesNotCrash()
+        {
+            var bogusPath = Path.Combine(
+                Path.GetTempPath(),
+                "VTG-doesnotexist-" + System.Guid.NewGuid().ToString("N"),
+                "state.json");
+
+            using (var store = new StateStore(bogusPath, new ThrowingObserver(), System.TimeSpan.FromMilliseconds(50)))
+            {
+                store.MarkDirty(new FolderNode(""), null);
+                System.Threading.Thread.Sleep(200);
+                // If we got here without the timer thread crashing the process, the guard works.
+                // Trigger a second cycle too:
+                store.MarkDirty(new FolderNode(""), null);
+                System.Threading.Thread.Sleep(200);
+            }
+        }
     }
 }
