@@ -12,7 +12,7 @@ namespace VirtualTabGroups.Plugin.Npp
         public int bottom;
     }
 
-    [StructLayout(LayoutKind.Sequential)]
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     public struct tTbData
     {
         public IntPtr hClient;

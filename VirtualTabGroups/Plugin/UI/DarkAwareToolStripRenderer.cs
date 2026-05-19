@@ -46,6 +46,12 @@ namespace VirtualTabGroups.Plugin.UI
             base.OnRenderArrow(e);
         }
 
+        protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e)
+        {
+            using (var pen = new Pen(_theme.Edge))
+                e.Graphics.DrawRectangle(pen, new Rectangle(0, 0, e.ToolStrip.Width - 1, e.ToolStrip.Height - 1));
+        }
+
         private sealed class DarkColorTable : ProfessionalColorTable
         {
             private readonly ThemeManager _t;

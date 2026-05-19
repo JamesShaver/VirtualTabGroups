@@ -271,7 +271,6 @@ namespace VirtualTabGroups.Plugin
             }
         }
 
-        // Action stubs — wired in Tasks 26-31.
         private void OnFileOpen(FileNode file)
         {
             PluginMain.OpenFile(file.Path);

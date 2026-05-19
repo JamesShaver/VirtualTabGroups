@@ -23,7 +23,7 @@ namespace VirtualTabGroups.Plugin.UI
             try
             {
                 Marshal.StructureToPtr(colors, ptr, false);
-                Win32.SendMessage(_nppHandle, (int)NppMsg.NPPM_GETDARKMODECOLORS, IntPtr.Zero, ptr);
+                Win32.SendMessage(_nppHandle, (int)NppMsg.NPPM_GETDARKMODECOLORS, new IntPtr(Marshal.SizeOf(typeof(DarkModeColors))), ptr);
                 colors = (DarkModeColors)Marshal.PtrToStructure(ptr, typeof(DarkModeColors));
             }
             finally
