@@ -174,16 +174,10 @@ namespace VirtualTabGroups.Core
 
         private string BackupCorruptFile()
         {
-            var suffix = ".corrupt-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmssZ");
+            // Random suffix guarantees uniqueness; no File.Exists race.
+            var randomToken = Path.GetRandomFileName().Replace(".", "");
+            var suffix = ".corrupt-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmssZ") + "-" + randomToken;
             var backupPath = _stateFilePath + suffix;
-
-            // Disambiguate if two corruption events land in the same second.
-            int n = 0;
-            while (File.Exists(backupPath))
-            {
-                n++;
-                backupPath = _stateFilePath + suffix + "-" + n;
-            }
 
             try
             {
@@ -197,6 +191,12 @@ namespace VirtualTabGroups.Core
             }
         }
 
+        /// <summary>
+        /// Flushes any pending write synchronously and releases the debounce timer.
+        /// Safe to call multiple times from the same thread (idempotent), but NOT thread-safe:
+        /// concurrent calls from multiple threads are not supported. Notepad++ plugins run on
+        /// the main UI thread by construction, so this is not a practical concern in production.
+        /// </summary>
         public void Dispose()
         {
             if (_disposed) return;
