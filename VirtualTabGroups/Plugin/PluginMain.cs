@@ -74,6 +74,9 @@ namespace VirtualTabGroups.Plugin
                 var pluginConfigDir = Path.Combine(configDirBuilder.ToString(), "VirtualTabGroups");
                 Directory.CreateDirectory(pluginConfigDir);
 
+                CrashLog.Initialize(pluginConfigDir);
+                CrashLog.Write("setInfo: configDir=" + pluginConfigDir);
+
                 var stateFilePath = Path.Combine(pluginConfigDir, "state.json");
                 _observer = new NotepadPlusPlusObserver(new WindowsMessageBoxProxy());
                 _stateStore = new StateStore(stateFilePath, _observer);
@@ -233,6 +236,7 @@ namespace VirtualTabGroups.Plugin
         /// </summary>
         private static void ReportCrash(string source, Exception ex)
         {
+            CrashLog.WriteException(source, ex);
             try
             {
                 var message = source + " failed: " + ex.GetType().Name + ": " + ex.Message
@@ -250,7 +254,7 @@ namespace VirtualTabGroups.Plugin
                         System.Windows.Forms.MessageBoxIcon.Error);
                 }
             }
-            catch { /* last-resort: swallow */ }
+            catch { /* last-resort fallback */ }
         }
 
         /// <summary>

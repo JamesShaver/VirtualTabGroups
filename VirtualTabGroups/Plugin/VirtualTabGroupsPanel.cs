@@ -34,10 +34,12 @@ namespace VirtualTabGroups.Plugin
         /// </summary>
         private void ReportError(string source, Exception ex)
         {
+            VirtualTabGroups.Plugin.CrashLog.WriteException(source, ex);
             try
             {
                 var message = $"{source} failed: {ex.GetType().Name}: {ex.Message}\n\n{ex.StackTrace}";
-                MessageBox.Show(this, message, "Virtual Tab Groups error",
+                // Use no-owner MessageBox in case panel parenting is wrong or panel handle is bad.
+                MessageBox.Show(message, "Virtual Tab Groups error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             catch { /* last-resort fallback */ }
@@ -294,6 +296,7 @@ namespace VirtualTabGroups.Plugin
         {
             try
             {
+                VirtualTabGroups.Plugin.CrashLog.Write("Menu_Opening: entered");
                 _menu.Items.Clear();
 
                 var hit = _tree.HitTest(_tree.PointToClient(Cursor.Position));
@@ -323,6 +326,7 @@ namespace VirtualTabGroups.Plugin
                         _menu.Items.Add(new ToolStripMenuItem("Collapse All", null, (s, ev) => ExpandAllUnder(hit.Node, false)));
                     }
                 }
+                VirtualTabGroups.Plugin.CrashLog.Write("Menu_Opening: built " + _menu.Items.Count + " items");
             }
             catch (Exception ex)
             {
@@ -346,19 +350,27 @@ namespace VirtualTabGroups.Plugin
         {
             try
             {
+                VirtualTabGroups.Plugin.CrashLog.Write("OnAddActive: entered, targetFolder=" + (targetFolder?.Name ?? "<null>"));
                 if (targetFolder == null) return;
+
                 var path = PluginMain.GetCurrentFullPath();
+                VirtualTabGroups.Plugin.CrashLog.Write("OnAddActive: GetCurrentFullPath returned '" + (path ?? "<null>") + "'");
                 if (string.IsNullOrEmpty(path)) return;
 
                 var added = TreeMutator.AddFile(targetFolder, path);
+                VirtualTabGroups.Plugin.CrashLog.Write("OnAddActive: AddFile returned " + (added != null ? added.Name : "<null>"));
                 if (added == null) return;
 
                 var tn = BuildTreeNode(added);
+                VirtualTabGroups.Plugin.CrashLog.Write("OnAddActive: BuildTreeNode complete");
+
                 var parentTn = FindByModelId(_tree.Nodes, targetFolder.Id);
                 if (parentTn == null) _tree.Nodes.Add(tn);
                 else parentTn.Nodes.Add(tn);
+                VirtualTabGroups.Plugin.CrashLog.Write("OnAddActive: inserted into TreeView");
 
                 _stateStore?.MarkDirty(_root, _currentSelectedId);
+                VirtualTabGroups.Plugin.CrashLog.Write("OnAddActive: MarkDirty complete");
             }
             catch (Exception ex)
             {

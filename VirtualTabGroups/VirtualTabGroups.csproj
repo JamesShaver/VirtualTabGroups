@@ -82,6 +82,7 @@
     <Compile Include="Plugin\WindowsMessageBoxProxy.cs" />
     <Compile Include="Plugin\NotepadPlusPlusObserver.cs" />
     <Compile Include="Plugin\AboutDialog.cs" />
+    <Compile Include="Plugin\CrashLog.cs" />
     <Compile Include="Plugin\PluginMain.cs" />
     <Compile Include="Plugin\Npp\Win32.cs" />
     <Compile Include="Plugin\Npp\NppData.cs" />

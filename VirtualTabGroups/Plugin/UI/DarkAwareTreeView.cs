@@ -1,5 +1,7 @@
+using System;
 using System.Drawing;
 using System.Windows.Forms;
+using VirtualTabGroups.Plugin;
 
 namespace VirtualTabGroups.Plugin.UI
 {
@@ -51,46 +53,54 @@ namespace VirtualTabGroups.Plugin.UI
 
         protected override void OnDrawNode(DrawTreeNodeEventArgs e)
         {
-            if (_theme == null) { base.OnDrawNode(e); return; }
-
-            var bg = (e.State & TreeNodeStates.Selected) != 0
-                ? _theme.BackgroundHotter
-                : _theme.Background;
-            using (var brush = new SolidBrush(bg))
-                e.Graphics.FillRectangle(brush, new Rectangle(0, e.Bounds.Top, Width, e.Bounds.Height));
-
-            int indent = e.Node.Level * Indent + 2;
-
-            if (e.Node.Level > 0)
+            try
             {
-                using (var pen = new Pen(_theme.Edge) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dot })
+                if (_theme == null) { base.OnDrawNode(e); return; }
+
+                var bg = (e.State & TreeNodeStates.Selected) != 0
+                    ? _theme.BackgroundHotter
+                    : _theme.Background;
+                using (var brush = new SolidBrush(bg))
+                    e.Graphics.FillRectangle(brush, new Rectangle(0, e.Bounds.Top, Width, e.Bounds.Height));
+
+                int indent = e.Node.Level * Indent + 2;
+
+                if (e.Node.Level > 0)
                 {
-                    int parentX = (e.Node.Level - 1) * Indent + 6;
-                    int midY = e.Bounds.Top + e.Bounds.Height / 2;
-                    e.Graphics.DrawLine(pen, parentX, e.Bounds.Top, parentX, midY);
-                    e.Graphics.DrawLine(pen, parentX, midY, parentX + Indent, midY);
+                    using (var pen = new Pen(_theme.Edge) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dot })
+                    {
+                        int parentX = (e.Node.Level - 1) * Indent + 6;
+                        int midY = e.Bounds.Top + e.Bounds.Height / 2;
+                        e.Graphics.DrawLine(pen, parentX, e.Bounds.Top, parentX, midY);
+                        e.Graphics.DrawLine(pen, parentX, midY, parentX + Indent, midY);
+                    }
                 }
-            }
 
-            if (e.Node.Nodes.Count > 0)
+                if (e.Node.Nodes.Count > 0)
+                {
+                    var glyphRect = new Rectangle(indent, e.Bounds.Top + (e.Bounds.Height - 8) / 2, 8, 8);
+                    DrawChevron(e.Graphics, glyphRect, e.Node.IsExpanded, _theme.Text);
+                }
+                indent += 14;
+
+                if (ImageList != null && e.Node.ImageIndex >= 0 && e.Node.ImageIndex < ImageList.Images.Count)
+                {
+                    var img = ImageList.Images[e.Node.ImageIndex];
+                    e.Graphics.DrawImage(img, indent, e.Bounds.Top + (e.Bounds.Height - 16) / 2, 16, 16);
+                    indent += 18;
+                }
+
+                var textRect = new Rectangle(indent, e.Bounds.Top, Width - indent, e.Bounds.Height);
+                TextRenderer.DrawText(e.Graphics, e.Node.Text, Font, textRect, _theme.Text,
+                    TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
+
+                e.DrawDefault = false;
+            }
+            catch (Exception ex)
             {
-                var glyphRect = new Rectangle(indent, e.Bounds.Top + (e.Bounds.Height - 8) / 2, 8, 8);
-                DrawChevron(e.Graphics, glyphRect, e.Node.IsExpanded, _theme.Text);
+                CrashLog.WriteException("DarkAwareTreeView.OnDrawNode", ex);
+                e.DrawDefault = true;
             }
-            indent += 14;
-
-            if (ImageList != null && e.Node.ImageIndex >= 0 && e.Node.ImageIndex < ImageList.Images.Count)
-            {
-                var img = ImageList.Images[e.Node.ImageIndex];
-                e.Graphics.DrawImage(img, indent, e.Bounds.Top + (e.Bounds.Height - 16) / 2, 16, 16);
-                indent += 18;
-            }
-
-            var textRect = new Rectangle(indent, e.Bounds.Top, Width - indent, e.Bounds.Height);
-            TextRenderer.DrawText(e.Graphics, e.Node.Text, Font, textRect, _theme.Text,
-                TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
-
-            e.DrawDefault = false;
         }
 
         private static void DrawChevron(System.Drawing.Graphics g, Rectangle r, bool expanded, System.Drawing.Color color)
@@ -126,40 +136,54 @@ namespace VirtualTabGroups.Plugin.UI
 
         protected override void OnPaint(PaintEventArgs e)
         {
-            base.OnPaint(e);
-            if (_insertionLine != null && _theme != null)
+            try
             {
-                using (var pen = new Pen(_theme.HotEdge, 2))
-                    e.Graphics.DrawLine(pen, _insertionLine.Value.Left, _insertionLine.Value.Top, _insertionLine.Value.Right, _insertionLine.Value.Top);
-            }
+                base.OnPaint(e);
+                if (_insertionLine != null && _theme != null)
+                {
+                    using (var pen = new Pen(_theme.HotEdge, 2))
+                        e.Graphics.DrawLine(pen, _insertionLine.Value.Left, _insertionLine.Value.Top, _insertionLine.Value.Right, _insertionLine.Value.Top);
+                }
 
-            if (!string.IsNullOrEmpty(_emptyStateText) && Nodes.Count == 0 && _theme != null)
+                if (!string.IsNullOrEmpty(_emptyStateText) && Nodes.Count == 0 && _theme != null)
+                {
+                    var bounds = ClientRectangle;
+                    var textRect = new Rectangle(
+                        bounds.Left,
+                        bounds.Top + bounds.Height / 3,
+                        bounds.Width,
+                        Font.Height + 4);
+                    TextRenderer.DrawText(e.Graphics, _emptyStateText, Font, textRect,
+                        _theme.DisabledText,
+                        TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+                }
+            }
+            catch (Exception ex)
             {
-                var bounds = ClientRectangle;
-                var textRect = new Rectangle(
-                    bounds.Left,
-                    bounds.Top + bounds.Height / 3,
-                    bounds.Width,
-                    Font.Height + 4);
-                TextRenderer.DrawText(e.Graphics, _emptyStateText, Font, textRect,
-                    _theme.DisabledText,
-                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+                CrashLog.WriteException("DarkAwareTreeView.OnPaint", ex);
             }
         }
 
         protected override void OnMouseDown(MouseEventArgs e)
         {
-            base.OnMouseDown(e);
-            if (e.Button != MouseButtons.Left) return;
-
-            var node = GetNodeAt(e.X, e.Y);
-            if (node == null || node.Nodes.Count == 0) return;
-
-            int indent = node.Level * Indent + 2;
-            var glyphRect = new Rectangle(indent, node.Bounds.Top + (node.Bounds.Height - 8) / 2, 8, 8);
-            if (glyphRect.Contains(e.X, e.Y))
+            try
             {
-                if (node.IsExpanded) node.Collapse(); else node.Expand();
+                base.OnMouseDown(e);
+                if (e.Button != MouseButtons.Left) return;
+
+                var node = GetNodeAt(e.X, e.Y);
+                if (node == null || node.Nodes.Count == 0) return;
+
+                int indent = node.Level * Indent + 2;
+                var glyphRect = new Rectangle(indent, node.Bounds.Top + (node.Bounds.Height - 8) / 2, 8, 8);
+                if (glyphRect.Contains(e.X, e.Y))
+                {
+                    if (node.IsExpanded) node.Collapse(); else node.Expand();
+                }
+            }
+            catch (Exception ex)
+            {
+                CrashLog.WriteException("DarkAwareTreeView.OnMouseDown", ex);
             }
         }
     }
