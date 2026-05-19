@@ -10,6 +10,7 @@ namespace VirtualTabGroups.Plugin
     public sealed class VirtualTabGroupsPanel : DockingForm
     {
         private readonly DarkAwareTreeView _tree;
+        private readonly IconCache _icons = new IconCache();
         private FolderNode _root;
         private StateStore _stateStore;
         private Guid? _currentSelectedId;
@@ -24,6 +25,9 @@ namespace VirtualTabGroups.Plugin
             StartPosition = FormStartPosition.Manual;
 
             _tree = new DarkAwareTreeView { Dock = DockStyle.Fill };
+            _tree.ImageList = _icons.Images;
+            _tree.ImageIndex = _icons.FolderClosedIndex;
+            _tree.SelectedImageIndex = _icons.FolderOpenIndex;
             _tree.AfterSelect += Tree_AfterSelect;
             _tree.AfterExpand += Tree_AfterExpand;
             _tree.AfterCollapse += Tree_AfterCollapse;
@@ -70,11 +74,19 @@ namespace VirtualTabGroups.Plugin
 
             if (model is FolderNode folder)
             {
+                tn.ImageIndex = _icons.FolderClosedIndex;
+                tn.SelectedImageIndex = _icons.FolderOpenIndex;
                 foreach (var child in folder.Children)
                 {
                     tn.Nodes.Add(BuildTreeNode(child));
                 }
                 if (folder.Expanded) tn.Expand();
+            }
+            else if (model is FileNode file)
+            {
+                int idx = _icons.GetIconIndexForFile(file.Path);
+                tn.ImageIndex = idx;
+                tn.SelectedImageIndex = idx;
             }
 
             return tn;
@@ -135,6 +147,12 @@ namespace VirtualTabGroups.Plugin
                 if (_stateStore != null && _root != null)
                     _stateStore.MarkDirty(_root, _currentSelectedId);
             }
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) _icons.Dispose();
+            base.Dispose(disposing);
         }
     }
 }
