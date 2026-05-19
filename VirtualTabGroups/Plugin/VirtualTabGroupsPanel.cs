@@ -252,7 +252,40 @@ namespace VirtualTabGroups.Plugin
 
             _stateStore?.MarkDirty(_root, _currentSelectedId);
         }
-        private void OnRemove(TreeNodeModel target) { /* Task 29 */ }
+        private void OnRemove(TreeNodeModel target)
+        {
+            if (target == null) return;
+
+            if (target is FolderNode folder && folder.Children.Count > 0)
+            {
+                int count = CountDescendants(folder);
+                var result = MessageBox.Show(
+                    this,
+                    $"Remove '{folder.Name}' and {count} item(s)?\n\nFiles on disk will not be deleted.",
+                    "Virtual Tab Groups",
+                    MessageBoxButtons.OKCancel,
+                    MessageBoxIcon.Warning);
+                if (result != DialogResult.OK) return;
+            }
+
+            if (!TreeMutator.RemoveNode(target, _root)) return;
+
+            var tn = FindByModelId(_tree.Nodes, target.Id);
+            if (tn != null) tn.Remove();
+
+            _stateStore?.MarkDirty(_root, _currentSelectedId);
+        }
+
+        private static int CountDescendants(FolderNode folder)
+        {
+            int total = 0;
+            foreach (var child in folder.Children)
+            {
+                total++;
+                if (child is FolderNode sub) total += CountDescendants(sub);
+            }
+            return total;
+        }
 
         private void ExpandAllUnder(TreeNode tn, bool expand)
         {
