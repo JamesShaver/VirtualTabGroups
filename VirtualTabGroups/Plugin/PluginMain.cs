@@ -196,5 +196,16 @@ namespace VirtualTabGroups.Plugin
         {
             // Phase 13 Task 41 wires the About dialog.
         }
+
+        internal static string GetCurrentFullPath()
+        {
+            var sb = new StringBuilder(1024);
+            Win32.SendMessageStringBuilder(
+                _nppData._nppHandle,
+                (int)NppMsg.NPPM_GETFULLCURRENTPATH,
+                new IntPtr(sb.Capacity),
+                sb);
+            return sb.ToString();
+        }
     }
 }

@@ -198,7 +198,22 @@ namespace VirtualTabGroups.Plugin
 
         // Action stubs — wired in Tasks 26-31.
         private void OnFileOpen(FileNode file) { /* Task 31 */ }
-        private void OnAddActive(FolderNode targetFolder) { /* Task 26 */ }
+        private void OnAddActive(FolderNode targetFolder)
+        {
+            if (targetFolder == null) return;
+            var path = PluginMain.GetCurrentFullPath();
+            if (string.IsNullOrEmpty(path)) return;
+
+            var added = TreeMutator.AddFile(targetFolder, path);
+            if (added == null) return;
+
+            var tn = BuildTreeNode(added);
+            var parentTn = FindByModelId(_tree.Nodes, targetFolder.Id);
+            if (parentTn == null) _tree.Nodes.Add(tn);
+            else parentTn.Nodes.Add(tn);
+
+            _stateStore?.MarkDirty(_root, _currentSelectedId);
+        }
         private void OnAddAllOpen(FolderNode targetFolder) { /* Task 27 */ }
         private void OnNewFolder(FolderNode targetFolder) { /* Task 28 */ }
         private void OnRemove(TreeNodeModel target) { /* Task 29 */ }
