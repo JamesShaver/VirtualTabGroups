@@ -9,7 +9,10 @@ namespace VirtualTabGroups.Plugin.UI
 
         public DarkAwareTreeView()
         {
-            DrawMode = TreeViewDrawMode.OwnerDrawText;
+            DrawMode = TreeViewDrawMode.OwnerDrawAll;
+            ShowLines = false;       // we paint our own connector lines (Task 37)
+            ShowPlusMinus = false;   // we paint our own chevrons
+            ShowRootLines = false;
             ShowNodeToolTips = false;
             HideSelection = false;
             LabelEdit = true;
@@ -46,14 +49,74 @@ namespace VirtualTabGroups.Plugin.UI
             var bg = (e.State & TreeNodeStates.Selected) != 0
                 ? _theme.BackgroundHotter
                 : _theme.Background;
+            using (var brush = new SolidBrush(bg))
+                e.Graphics.FillRectangle(brush, new Rectangle(0, e.Bounds.Top, Width, e.Bounds.Height));
 
-            using (var b = new SolidBrush(bg))
-                e.Graphics.FillRectangle(b, e.Bounds);
+            int indent = e.Node.Level * Indent + 2;
 
-            TextRenderer.DrawText(e.Graphics, e.Node.Text, Font, e.Bounds, _theme.Text,
-                TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
+            if (e.Node.Level > 0)
+            {
+                using (var pen = new Pen(_theme.Edge) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dot })
+                {
+                    int parentX = (e.Node.Level - 1) * Indent + 6;
+                    int midY = e.Bounds.Top + e.Bounds.Height / 2;
+                    e.Graphics.DrawLine(pen, parentX, e.Bounds.Top, parentX, midY);
+                    e.Graphics.DrawLine(pen, parentX, midY, parentX + Indent, midY);
+                }
+            }
+
+            if (e.Node.Nodes.Count > 0)
+            {
+                var glyphRect = new Rectangle(indent, e.Bounds.Top + (e.Bounds.Height - 8) / 2, 8, 8);
+                DrawChevron(e.Graphics, glyphRect, e.Node.IsExpanded, _theme.Text);
+            }
+            indent += 14;
+
+            if (ImageList != null && e.Node.ImageIndex >= 0 && e.Node.ImageIndex < ImageList.Images.Count)
+            {
+                var img = ImageList.Images[e.Node.ImageIndex];
+                e.Graphics.DrawImage(img, indent, e.Bounds.Top + (e.Bounds.Height - 16) / 2, 16, 16);
+                indent += 18;
+            }
+
+            var textRect = new Rectangle(indent, e.Bounds.Top, Width - indent, e.Bounds.Height);
+            TextRenderer.DrawText(e.Graphics, e.Node.Text, Font, textRect, _theme.Text,
+                TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
 
             e.DrawDefault = false;
+        }
+
+        private static void DrawChevron(System.Drawing.Graphics g, Rectangle r, bool expanded, System.Drawing.Color color)
+        {
+            using (var brush = new SolidBrush(color))
+            {
+                if (expanded)
+                {
+                    var pts = new[] { new Point(r.Left, r.Top + 2), new Point(r.Right, r.Top + 2), new Point(r.Left + r.Width / 2, r.Bottom - 1) };
+                    g.FillPolygon(brush, pts);
+                }
+                else
+                {
+                    var pts = new[] { new Point(r.Left + 2, r.Top), new Point(r.Left + 2, r.Bottom), new Point(r.Right - 1, r.Top + r.Height / 2) };
+                    g.FillPolygon(brush, pts);
+                }
+            }
+        }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            base.OnMouseDown(e);
+            if (e.Button != MouseButtons.Left) return;
+
+            var node = GetNodeAt(e.X, e.Y);
+            if (node == null || node.Nodes.Count == 0) return;
+
+            int indent = node.Level * Indent + 2;
+            var glyphRect = new Rectangle(indent, node.Bounds.Top + (node.Bounds.Height - 8) / 2, 8, 8);
+            if (glyphRect.Contains(e.X, e.Y))
+            {
+                if (node.IsExpanded) node.Collapse(); else node.Expand();
+            }
         }
     }
 }
