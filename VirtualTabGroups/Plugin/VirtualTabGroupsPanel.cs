@@ -42,6 +42,20 @@ namespace VirtualTabGroups.Plugin
             _tree.ContextMenuStrip = _menu;
             _menu.Opening += Menu_Opening;
 
+            // Drag-drop wiring.
+            _tree.ItemDrag += (s, ev) =>
+            {
+                if (ev.Item is TreeNode tn) _tree.DoDragDrop(tn, DragDropEffects.Move);
+            };
+            _tree.DragEnter += (s, ev) =>
+            {
+                ev.Effect = ev.Data.GetDataPresent(typeof(TreeNode))
+                    ? DragDropEffects.Move
+                    : DragDropEffects.None;
+            };
+            _tree.DragOver += Tree_DragOver;
+            _tree.DragDrop += Tree_DragDrop;
+
             try
             {
                 using (var stream = GetType().Assembly.GetManifestResourceStream(
@@ -318,6 +332,98 @@ namespace VirtualTabGroups.Plugin
                 foreach (TreeNode c in n.Nodes) Recurse(c);
             }
             Recurse(tn);
+        }
+
+        // ──────────────────────────────────────────────
+        // Drag-and-drop support (Task 32)
+        // ──────────────────────────────────────────────
+
+        private enum DropPosition { Above, Into, Below, None }
+
+        private DropPosition ComputeDropPosition(TreeNode target, Point clientPoint)
+        {
+            if (target == null) return DropPosition.None;
+            var bounds = target.Bounds;
+            int third = bounds.Height / 4;
+            if (clientPoint.Y < bounds.Top + third) return DropPosition.Above;
+            if (clientPoint.Y > bounds.Bottom - third) return DropPosition.Below;
+            return target.Tag is FolderNode ? DropPosition.Into : DropPosition.Below;
+        }
+
+        private void Tree_DragOver(object sender, DragEventArgs e)
+        {
+            if (!e.Data.GetDataPresent(typeof(TreeNode))) { e.Effect = DragDropEffects.None; return; }
+
+            var clientPoint = _tree.PointToClient(new Point(e.X, e.Y));
+            var target = _tree.GetNodeAt(clientPoint);
+
+            var dragged = (TreeNode)e.Data.GetData(typeof(TreeNode));
+            if (target == null) { e.Effect = DragDropEffects.Move; return; }
+
+            if (dragged.Tag is FolderNode draggedFolder && target.Tag is TreeNodeModel targetModel)
+            {
+                if (target == dragged) { e.Effect = DragDropEffects.None; return; }
+                if (TreeMutator.FindContainer(draggedFolder, targetModel) != null)
+                {
+                    e.Effect = DragDropEffects.None;
+                    return;
+                }
+            }
+
+            e.Effect = DragDropEffects.Move;
+        }
+
+        private void Tree_DragDrop(object sender, DragEventArgs e)
+        {
+            if (!e.Data.GetDataPresent(typeof(TreeNode))) return;
+
+            var dragged = (TreeNode)e.Data.GetData(typeof(TreeNode));
+            var draggedModel = dragged.Tag as TreeNodeModel;
+            if (draggedModel == null) return;
+
+            var clientPoint = _tree.PointToClient(new Point(e.X, e.Y));
+            var target = _tree.GetNodeAt(clientPoint);
+            var position = ComputeDropPosition(target, clientPoint);
+
+            FolderNode destinationFolder;
+            int insertionIndex;
+
+            if (target == null)
+            {
+                destinationFolder = _root;
+                insertionIndex = _root.Children.Count;
+            }
+            else
+            {
+                var targetModel = (TreeNodeModel)target.Tag;
+
+                switch (position)
+                {
+                    case DropPosition.Above:
+                        destinationFolder = TreeMutator.FindContainer(_root, targetModel) ?? _root;
+                        insertionIndex = destinationFolder.Children.IndexOf(targetModel);
+                        break;
+                    case DropPosition.Below:
+                        destinationFolder = TreeMutator.FindContainer(_root, targetModel) ?? _root;
+                        insertionIndex = destinationFolder.Children.IndexOf(targetModel) + 1;
+                        break;
+                    case DropPosition.Into:
+                    default:
+                        destinationFolder = (FolderNode)targetModel;
+                        insertionIndex = destinationFolder.Children.Count;
+                        break;
+                }
+            }
+
+            if (!TreeMutator.MoveNode(draggedModel, destinationFolder, insertionIndex, _root))
+                return;
+
+            RefreshFromModel();
+
+            var newTn = FindByModelId(_tree.Nodes, draggedModel.Id);
+            if (newTn != null) { _tree.SelectedNode = newTn; newTn.EnsureVisible(); }
+
+            _stateStore?.MarkDirty(_root, draggedModel.Id);
         }
 
         protected override void Dispose(bool disposing)
