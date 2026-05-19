@@ -27,6 +27,22 @@ namespace VirtualTabGroups.Plugin
 
         public DarkAwareTreeView Tree => _tree;
 
+        /// <summary>
+        /// Surfaces a MessageBox with the exception details instead of letting the
+        /// exception propagate to Notepad++'s native message pump (which would crash
+        /// the host). Safe to call from any UI callback.
+        /// </summary>
+        private void ReportError(string source, Exception ex)
+        {
+            try
+            {
+                var message = $"{source} failed: {ex.GetType().Name}: {ex.Message}\n\n{ex.StackTrace}";
+                MessageBox.Show(this, message, "Virtual Tab Groups error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            catch { /* last-resort fallback */ }
+        }
+
         public void AttachTheme(ThemeManager theme)
         {
             _tree.AttachTheme(theme);
@@ -58,8 +74,12 @@ namespace VirtualTabGroups.Plugin
             _tree.AfterLabelEdit += Tree_AfterLabelEdit;
             _tree.NodeMouseDoubleClick += (s, ev) =>
             {
-                if (ev.Node?.Tag is FileNode f)
-                    PluginMain.OpenFile(f.Path);
+                try
+                {
+                    if (ev.Node?.Tag is FileNode f)
+                        PluginMain.OpenFile(f.Path);
+                }
+                catch (Exception ex) { ReportError("Double-click open", ex); }
             };
             _tree.KeyDown += Tree_KeyDown;
 
@@ -69,13 +89,21 @@ namespace VirtualTabGroups.Plugin
             // Drag-drop wiring.
             _tree.ItemDrag += (s, ev) =>
             {
-                if (ev.Item is TreeNode tn) _tree.DoDragDrop(tn, DragDropEffects.Move);
+                try
+                {
+                    if (ev.Item is TreeNode tn) _tree.DoDragDrop(tn, DragDropEffects.Move);
+                }
+                catch (Exception ex) { ReportError("Drag start", ex); }
             };
             _tree.DragEnter += (s, ev) =>
             {
-                ev.Effect = ev.Data.GetDataPresent(typeof(TreeNode))
-                    ? DragDropEffects.Move
-                    : DragDropEffects.None;
+                try
+                {
+                    ev.Effect = ev.Data.GetDataPresent(typeof(TreeNode))
+                        ? DragDropEffects.Move
+                        : DragDropEffects.None;
+                }
+                catch (Exception ex) { ReportError("Drag enter", ex); }
             };
             _tree.DragOver += Tree_DragOver;
             _tree.DragDrop += Tree_DragDrop;
@@ -83,18 +111,26 @@ namespace VirtualTabGroups.Plugin
             // Hover-expand timer.
             _hoverTimer.Tick += (s, ev) =>
             {
-                _hoverTimer.Stop();
-                if (_hoverNode != null && _hoverNode.Tag is FolderNode && !_hoverNode.IsExpanded)
-                    _hoverNode.Expand();
+                try
+                {
+                    _hoverTimer.Stop();
+                    if (_hoverNode != null && _hoverNode.Tag is FolderNode && !_hoverNode.IsExpanded)
+                        _hoverNode.Expand();
+                }
+                catch (Exception ex) { ReportError("Hover auto-expand", ex); }
             };
 
             // Auto-scroll timer.
             _scrollTimer.Tick += (s, ev) =>
             {
-                if (_scrollDirection == 0 || _tree.Nodes.Count == 0) return;
-                var node = _tree.TopNode;
-                if (_scrollDirection < 0 && node?.PrevVisibleNode != null) _tree.TopNode = node.PrevVisibleNode;
-                else if (_scrollDirection > 0 && node?.NextVisibleNode != null) _tree.TopNode = node.NextVisibleNode;
+                try
+                {
+                    if (_scrollDirection == 0 || _tree.Nodes.Count == 0) return;
+                    var node = _tree.TopNode;
+                    if (_scrollDirection < 0 && node?.PrevVisibleNode != null) _tree.TopNode = node.PrevVisibleNode;
+                    else if (_scrollDirection > 0 && node?.NextVisibleNode != null) _tree.TopNode = node.NextVisibleNode;
+                }
+                catch (Exception ex) { ReportError("Auto-scroll", ex); }
             };
 
             try
@@ -194,163 +230,222 @@ namespace VirtualTabGroups.Plugin
 
         private void Tree_AfterSelect(object sender, TreeViewEventArgs e)
         {
-            if (e.Node?.Tag is TreeNodeModel m)
+            try
             {
-                _currentSelectedId = m.Id;
-                if (_stateStore != null && _root != null)
-                    _stateStore.MarkDirty(_root, _currentSelectedId);
+                if (e.Node?.Tag is TreeNodeModel m)
+                {
+                    _currentSelectedId = m.Id;
+                    if (_stateStore != null && _root != null)
+                        _stateStore.MarkDirty(_root, _currentSelectedId);
+                }
             }
+            catch (Exception ex) { ReportError("Tree_AfterSelect", ex); }
         }
 
         private void Tree_AfterExpand(object sender, TreeViewEventArgs e)
         {
-            if (e.Node?.Tag is FolderNode f)
+            try
             {
-                f.Expanded = true;
-                if (_stateStore != null && _root != null)
-                    _stateStore.MarkDirty(_root, _currentSelectedId);
+                if (e.Node?.Tag is FolderNode f)
+                {
+                    f.Expanded = true;
+                    if (_stateStore != null && _root != null)
+                        _stateStore.MarkDirty(_root, _currentSelectedId);
+                }
             }
+            catch (Exception ex) { ReportError("Tree_AfterExpand", ex); }
         }
 
         private void Tree_AfterCollapse(object sender, TreeViewEventArgs e)
         {
-            if (e.Node?.Tag is FolderNode f)
+            try
             {
-                f.Expanded = false;
-                if (_stateStore != null && _root != null)
-                    _stateStore.MarkDirty(_root, _currentSelectedId);
+                if (e.Node?.Tag is FolderNode f)
+                {
+                    f.Expanded = false;
+                    if (_stateStore != null && _root != null)
+                        _stateStore.MarkDirty(_root, _currentSelectedId);
+                }
             }
+            catch (Exception ex) { ReportError("Tree_AfterCollapse", ex); }
         }
 
         private void Tree_AfterLabelEdit(object sender, NodeLabelEditEventArgs e)
         {
-            if (e.CancelEdit || string.IsNullOrWhiteSpace(e.Label))
+            try
             {
-                e.CancelEdit = true;
-                return;
-            }
+                if (e.CancelEdit || string.IsNullOrWhiteSpace(e.Label))
+                {
+                    e.CancelEdit = true;
+                    return;
+                }
 
-            if (e.Node?.Tag is TreeNodeModel m)
-            {
-                m.Name = e.Label;
-                if (_stateStore != null && _root != null)
-                    _stateStore.MarkDirty(_root, _currentSelectedId);
+                if (e.Node?.Tag is TreeNodeModel m)
+                {
+                    m.Name = e.Label;
+                    if (_stateStore != null && _root != null)
+                        _stateStore.MarkDirty(_root, _currentSelectedId);
+                }
             }
+            catch (Exception ex) { ReportError("Tree_AfterLabelEdit", ex); }
         }
 
         private void Menu_Opening(object sender, System.ComponentModel.CancelEventArgs e)
         {
-            _menu.Items.Clear();
-
-            var hit = _tree.HitTest(_tree.PointToClient(Cursor.Position));
-            var target = hit.Node?.Tag as TreeNodeModel;
-            var targetFolder = target as FolderNode ?? _root;
-
-            if (target is FileNode fileTarget)
+            try
             {
-                _menu.Items.Add(new ToolStripMenuItem("Open", null, (s, ev) => OnFileOpen(fileTarget)));
-                _menu.Items.Add(new ToolStripSeparator());
-                _menu.Items.Add(new ToolStripMenuItem("Rename", null, (s, ev) => hit.Node.BeginEdit()));
-                _menu.Items.Add(new ToolStripMenuItem("Remove…", null, (s, ev) => OnRemove(fileTarget)));
-            }
-            else
-            {
-                _menu.Items.Add(new ToolStripMenuItem("Add Active File", null, (s, ev) => OnAddActive(targetFolder)));
-                _menu.Items.Add(new ToolStripMenuItem("Add All Open Files", null, (s, ev) => OnAddAllOpen(targetFolder)));
-                _menu.Items.Add(new ToolStripMenuItem("New Folder", null, (s, ev) => OnNewFolder(targetFolder)));
+                _menu.Items.Clear();
 
-                if (target is FolderNode existingFolder)
+                var hit = _tree.HitTest(_tree.PointToClient(Cursor.Position));
+                var target = hit.Node?.Tag as TreeNodeModel;
+                var targetFolder = target as FolderNode ?? _root;
+
+                if (target is FileNode fileTarget)
                 {
+                    _menu.Items.Add(new ToolStripMenuItem("Open", null, (s, ev) => OnFileOpen(fileTarget)));
                     _menu.Items.Add(new ToolStripSeparator());
                     _menu.Items.Add(new ToolStripMenuItem("Rename", null, (s, ev) => hit.Node.BeginEdit()));
-                    _menu.Items.Add(new ToolStripMenuItem("Remove…", null, (s, ev) => OnRemove(existingFolder)));
-                    _menu.Items.Add(new ToolStripSeparator());
-                    _menu.Items.Add(new ToolStripMenuItem("Expand All", null, (s, ev) => ExpandAllUnder(hit.Node, true)));
-                    _menu.Items.Add(new ToolStripMenuItem("Collapse All", null, (s, ev) => ExpandAllUnder(hit.Node, false)));
+                    _menu.Items.Add(new ToolStripMenuItem("Remove…", null, (s, ev) => OnRemove(fileTarget)));
                 }
+                else
+                {
+                    _menu.Items.Add(new ToolStripMenuItem("Add Active File", null, (s, ev) => OnAddActive(targetFolder)));
+                    _menu.Items.Add(new ToolStripMenuItem("Add All Open Files", null, (s, ev) => OnAddAllOpen(targetFolder)));
+                    _menu.Items.Add(new ToolStripMenuItem("New Folder", null, (s, ev) => OnNewFolder(targetFolder)));
+
+                    if (target is FolderNode existingFolder)
+                    {
+                        _menu.Items.Add(new ToolStripSeparator());
+                        _menu.Items.Add(new ToolStripMenuItem("Rename", null, (s, ev) => hit.Node.BeginEdit()));
+                        _menu.Items.Add(new ToolStripMenuItem("Remove…", null, (s, ev) => OnRemove(existingFolder)));
+                        _menu.Items.Add(new ToolStripSeparator());
+                        _menu.Items.Add(new ToolStripMenuItem("Expand All", null, (s, ev) => ExpandAllUnder(hit.Node, true)));
+                        _menu.Items.Add(new ToolStripMenuItem("Collapse All", null, (s, ev) => ExpandAllUnder(hit.Node, false)));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                ReportError("Building context menu", ex);
+                e.Cancel = true;
             }
         }
 
         private void OnFileOpen(FileNode file)
         {
-            PluginMain.OpenFile(file.Path);
+            try
+            {
+                PluginMain.OpenFile(file.Path);
+            }
+            catch (Exception ex)
+            {
+                ReportError("Open File", ex);
+            }
         }
         private void OnAddActive(FolderNode targetFolder)
         {
-            if (targetFolder == null) return;
-            var path = PluginMain.GetCurrentFullPath();
-            if (string.IsNullOrEmpty(path)) return;
+            try
+            {
+                if (targetFolder == null) return;
+                var path = PluginMain.GetCurrentFullPath();
+                if (string.IsNullOrEmpty(path)) return;
 
-            var added = TreeMutator.AddFile(targetFolder, path);
-            if (added == null) return;
+                var added = TreeMutator.AddFile(targetFolder, path);
+                if (added == null) return;
 
-            var tn = BuildTreeNode(added);
-            var parentTn = FindByModelId(_tree.Nodes, targetFolder.Id);
-            if (parentTn == null) _tree.Nodes.Add(tn);
-            else parentTn.Nodes.Add(tn);
+                var tn = BuildTreeNode(added);
+                var parentTn = FindByModelId(_tree.Nodes, targetFolder.Id);
+                if (parentTn == null) _tree.Nodes.Add(tn);
+                else parentTn.Nodes.Add(tn);
 
-            _stateStore?.MarkDirty(_root, _currentSelectedId);
+                _stateStore?.MarkDirty(_root, _currentSelectedId);
+            }
+            catch (Exception ex)
+            {
+                ReportError("Add Active File", ex);
+            }
         }
         private void OnAddAllOpen(FolderNode targetFolder)
         {
-            if (targetFolder == null) return;
-            var paths = PluginMain.GetAllOpenFilePaths();
-            if (paths.Length == 0) return;
-
-            var parentTn = FindByModelId(_tree.Nodes, targetFolder.Id);
-            bool any = false;
-
-            foreach (var path in paths)
+            try
             {
-                var added = TreeMutator.AddFile(targetFolder, path);
-                if (added == null) continue;
+                if (targetFolder == null) return;
+                var paths = PluginMain.GetAllOpenFilePaths();
+                if (paths.Length == 0) return;
 
-                any = true;
-                var tn = BuildTreeNode(added);
-                if (parentTn == null) _tree.Nodes.Add(tn);
-                else parentTn.Nodes.Add(tn);
+                var parentTn = FindByModelId(_tree.Nodes, targetFolder.Id);
+                bool any = false;
+
+                foreach (var path in paths)
+                {
+                    var added = TreeMutator.AddFile(targetFolder, path);
+                    if (added == null) continue;
+
+                    any = true;
+                    var tn = BuildTreeNode(added);
+                    if (parentTn == null) _tree.Nodes.Add(tn);
+                    else parentTn.Nodes.Add(tn);
+                }
+
+                if (any) _stateStore?.MarkDirty(_root, _currentSelectedId);
             }
-
-            if (any) _stateStore?.MarkDirty(_root, _currentSelectedId);
+            catch (Exception ex)
+            {
+                ReportError("Add All Open Files", ex);
+            }
         }
         private void OnNewFolder(FolderNode targetFolder)
         {
-            if (targetFolder == null) return;
-            var newFolder = new FolderNode("New Folder");
-            targetFolder.Children.Add(newFolder);
+            try
+            {
+                if (targetFolder == null) return;
+                var newFolder = new FolderNode("New Folder");
+                targetFolder.Children.Add(newFolder);
 
-            var tn = BuildTreeNode(newFolder);
-            var parentTn = FindByModelId(_tree.Nodes, targetFolder.Id);
-            if (parentTn == null) _tree.Nodes.Add(tn);
-            else { parentTn.Nodes.Add(tn); parentTn.Expand(); }
+                var tn = BuildTreeNode(newFolder);
+                var parentTn = FindByModelId(_tree.Nodes, targetFolder.Id);
+                if (parentTn == null) _tree.Nodes.Add(tn);
+                else { parentTn.Nodes.Add(tn); parentTn.Expand(); }
 
-            _tree.SelectedNode = tn;
-            tn.BeginEdit();
+                _tree.SelectedNode = tn;
+                tn.BeginEdit();
 
-            _stateStore?.MarkDirty(_root, _currentSelectedId);
+                _stateStore?.MarkDirty(_root, _currentSelectedId);
+            }
+            catch (Exception ex)
+            {
+                ReportError("New Folder", ex);
+            }
         }
         private void OnRemove(TreeNodeModel target)
         {
-            if (target == null) return;
-
-            if (target is FolderNode folder && folder.Children.Count > 0)
+            try
             {
-                int count = CountDescendants(folder);
-                var result = MessageBox.Show(
-                    this,
-                    $"Remove '{folder.Name}' and {count} item(s)?\n\nFiles on disk will not be deleted.",
-                    "Virtual Tab Groups",
-                    MessageBoxButtons.OKCancel,
-                    MessageBoxIcon.Warning);
-                if (result != DialogResult.OK) return;
+                if (target == null) return;
+
+                if (target is FolderNode folder && folder.Children.Count > 0)
+                {
+                    int count = CountDescendants(folder);
+                    var result = MessageBox.Show(
+                        this,
+                        $"Remove '{folder.Name}' and {count} item(s)?\n\nFiles on disk will not be deleted.",
+                        "Virtual Tab Groups",
+                        MessageBoxButtons.OKCancel,
+                        MessageBoxIcon.Warning);
+                    if (result != DialogResult.OK) return;
+                }
+
+                if (!TreeMutator.RemoveNode(target, _root)) return;
+
+                var tn = FindByModelId(_tree.Nodes, target.Id);
+                if (tn != null) tn.Remove();
+
+                _stateStore?.MarkDirty(_root, _currentSelectedId);
             }
-
-            if (!TreeMutator.RemoveNode(target, _root)) return;
-
-            var tn = FindByModelId(_tree.Nodes, target.Id);
-            if (tn != null) tn.Remove();
-
-            _stateStore?.MarkDirty(_root, _currentSelectedId);
+            catch (Exception ex)
+            {
+                ReportError("Remove", ex);
+            }
         }
 
         private static int CountDescendants(FolderNode folder)
@@ -366,53 +461,57 @@ namespace VirtualTabGroups.Plugin
 
         private void Tree_KeyDown(object sender, KeyEventArgs e)
         {
-            var selected = _tree.SelectedNode;
-            var selectedModel = selected?.Tag as TreeNodeModel;
-
-            if (e.KeyCode == Keys.Enter && selectedModel is FileNode file)
+            try
             {
-                PluginMain.OpenFile(file.Path);
-                e.Handled = true;
-                return;
-            }
+                var selected = _tree.SelectedNode;
+                var selectedModel = selected?.Tag as TreeNodeModel;
 
-            if (e.KeyCode == Keys.F2 && selected != null)
-            {
-                selected.BeginEdit();
-                e.Handled = true;
-                return;
-            }
+                if (e.KeyCode == Keys.Enter && selectedModel is FileNode file)
+                {
+                    PluginMain.OpenFile(file.Path);
+                    e.Handled = true;
+                    return;
+                }
 
-            if (e.KeyCode == Keys.Delete && selectedModel != null)
-            {
-                OnRemove(selectedModel);
-                e.Handled = true;
-                return;
-            }
+                if (e.KeyCode == Keys.F2 && selected != null)
+                {
+                    selected.BeginEdit();
+                    e.Handled = true;
+                    return;
+                }
 
-            if (e.Control && !e.Shift && !e.Alt && e.KeyCode == Keys.N)
-            {
-                var target = (selectedModel as FolderNode) ?? _root;
-                OnNewFolder(target);
-                e.Handled = true;
-                return;
-            }
+                if (e.KeyCode == Keys.Delete && selectedModel != null)
+                {
+                    OnRemove(selectedModel);
+                    e.Handled = true;
+                    return;
+                }
 
-            if (e.Control && e.Shift && !e.Alt && e.KeyCode == Keys.A)
-            {
-                var target = (selectedModel as FolderNode) ?? _root;
-                OnAddActive(target);
-                e.Handled = true;
-                return;
-            }
+                if (e.Control && !e.Shift && !e.Alt && e.KeyCode == Keys.N)
+                {
+                    var target = (selectedModel as FolderNode) ?? _root;
+                    OnNewFolder(target);
+                    e.Handled = true;
+                    return;
+                }
 
-            if (e.Control && e.Shift && e.Alt && e.KeyCode == Keys.A)
-            {
-                var target = (selectedModel as FolderNode) ?? _root;
-                OnAddAllOpen(target);
-                e.Handled = true;
-                return;
+                if (e.Control && e.Shift && !e.Alt && e.KeyCode == Keys.A)
+                {
+                    var target = (selectedModel as FolderNode) ?? _root;
+                    OnAddActive(target);
+                    e.Handled = true;
+                    return;
+                }
+
+                if (e.Control && e.Shift && e.Alt && e.KeyCode == Keys.A)
+                {
+                    var target = (selectedModel as FolderNode) ?? _root;
+                    OnAddAllOpen(target);
+                    e.Handled = true;
+                    return;
+                }
             }
+            catch (Exception ex) { ReportError("Tree_KeyDown", ex); }
         }
 
         private void ExpandAllUnder(TreeNode tn, bool expand)
@@ -443,125 +542,133 @@ namespace VirtualTabGroups.Plugin
 
         private void Tree_DragOver(object sender, DragEventArgs e)
         {
-            if (!e.Data.GetDataPresent(typeof(TreeNode))) { e.Effect = DragDropEffects.None; return; }
-
-            var clientPoint = _tree.PointToClient(new Point(e.X, e.Y));
-            var target = _tree.GetNodeAt(clientPoint);
-
-            var dragged = (TreeNode)e.Data.GetData(typeof(TreeNode));
-
-            // Cyclic-drop guard.
-            if (target != null && dragged.Tag is FolderNode draggedFolder && target.Tag is TreeNodeModel targetModel)
+            try
             {
-                if (target == dragged) { e.Effect = DragDropEffects.None; _hoverTimer.Stop(); return; }
-                if (TreeMutator.FindContainer(draggedFolder, targetModel) != null)
+                if (!e.Data.GetDataPresent(typeof(TreeNode))) { e.Effect = DragDropEffects.None; return; }
+
+                var clientPoint = _tree.PointToClient(new Point(e.X, e.Y));
+                var target = _tree.GetNodeAt(clientPoint);
+
+                var dragged = (TreeNode)e.Data.GetData(typeof(TreeNode));
+
+                // Cyclic-drop guard.
+                if (target != null && dragged.Tag is FolderNode draggedFolder && target.Tag is TreeNodeModel targetModel)
                 {
-                    e.Effect = DragDropEffects.None;
+                    if (target == dragged) { e.Effect = DragDropEffects.None; _hoverTimer.Stop(); return; }
+                    if (TreeMutator.FindContainer(draggedFolder, targetModel) != null)
+                    {
+                        e.Effect = DragDropEffects.None;
+                        _hoverTimer.Stop();
+                        return;
+                    }
+                }
+
+                e.Effect = DragDropEffects.Move;
+
+                // Insertion-line indicator.
+                if (target != null)
+                {
+                    var position = ComputeDropPosition(target, clientPoint);
+                    switch (position)
+                    {
+                        case DropPosition.Above:
+                            _tree.ShowInsertionLine(target.Bounds.Top);
+                            break;
+                        case DropPosition.Below:
+                            _tree.ShowInsertionLine(target.Bounds.Bottom);
+                            break;
+                        default:
+                            _tree.ClearInsertionLine();
+                            break;
+                    }
+                }
+                else
+                {
+                    _tree.ClearInsertionLine();
+                }
+
+                // Hover-timer management for auto-expand.
+                if (target != null && target != _hoverNode)
+                {
+                    _hoverNode = target;
                     _hoverTimer.Stop();
-                    return;
+                    if (target.Tag is FolderNode && !target.IsExpanded) _hoverTimer.Start();
                 }
-            }
-
-            e.Effect = DragDropEffects.Move;
-
-            // Insertion-line indicator.
-            if (target != null)
-            {
-                var position = ComputeDropPosition(target, clientPoint);
-                switch (position)
+                else if (target == null)
                 {
-                    case DropPosition.Above:
-                        _tree.ShowInsertionLine(target.Bounds.Top);
-                        break;
-                    case DropPosition.Below:
-                        _tree.ShowInsertionLine(target.Bounds.Bottom);
-                        break;
-                    default:
-                        _tree.ClearInsertionLine();
-                        break;
+                    _hoverNode = null;
+                    _hoverTimer.Stop();
                 }
-            }
-            else
-            {
-                _tree.ClearInsertionLine();
-            }
 
-            // Hover-timer management for auto-expand.
-            if (target != null && target != _hoverNode)
-            {
-                _hoverNode = target;
-                _hoverTimer.Stop();
-                if (target.Tag is FolderNode && !target.IsExpanded) _hoverTimer.Start();
+                // Auto-scroll near edges.
+                const int margin = 20;
+                if (clientPoint.Y < margin) { _scrollDirection = -1; _scrollTimer.Start(); }
+                else if (clientPoint.Y > _tree.Height - margin) { _scrollDirection = 1; _scrollTimer.Start(); }
+                else { _scrollDirection = 0; _scrollTimer.Stop(); }
             }
-            else if (target == null)
-            {
-                _hoverNode = null;
-                _hoverTimer.Stop();
-            }
-
-            // Auto-scroll near edges.
-            const int margin = 20;
-            if (clientPoint.Y < margin) { _scrollDirection = -1; _scrollTimer.Start(); }
-            else if (clientPoint.Y > _tree.Height - margin) { _scrollDirection = 1; _scrollTimer.Start(); }
-            else { _scrollDirection = 0; _scrollTimer.Stop(); }
+            catch (Exception ex) { ReportError("Tree_DragOver", ex); }
         }
 
         private void Tree_DragDrop(object sender, DragEventArgs e)
         {
-            _hoverTimer.Stop();
-            _hoverNode = null;
-            _scrollTimer.Stop();
-            _tree.ClearInsertionLine();
-
-            if (!e.Data.GetDataPresent(typeof(TreeNode))) return;
-
-            var dragged = (TreeNode)e.Data.GetData(typeof(TreeNode));
-            var draggedModel = dragged.Tag as TreeNodeModel;
-            if (draggedModel == null) return;
-
-            var clientPoint = _tree.PointToClient(new Point(e.X, e.Y));
-            var target = _tree.GetNodeAt(clientPoint);
-            var position = ComputeDropPosition(target, clientPoint);
-
-            FolderNode destinationFolder;
-            int insertionIndex;
-
-            if (target == null)
+            try
             {
-                destinationFolder = _root;
-                insertionIndex = _root.Children.Count;
-            }
-            else
-            {
-                var targetModel = (TreeNodeModel)target.Tag;
+                _hoverTimer.Stop();
+                _hoverNode = null;
+                _scrollTimer.Stop();
+                _tree.ClearInsertionLine();
 
-                switch (position)
+                if (!e.Data.GetDataPresent(typeof(TreeNode))) return;
+
+                var dragged = (TreeNode)e.Data.GetData(typeof(TreeNode));
+                var draggedModel = dragged.Tag as TreeNodeModel;
+                if (draggedModel == null) return;
+
+                var clientPoint = _tree.PointToClient(new Point(e.X, e.Y));
+                var target = _tree.GetNodeAt(clientPoint);
+                var position = ComputeDropPosition(target, clientPoint);
+
+                FolderNode destinationFolder;
+                int insertionIndex;
+
+                if (target == null)
                 {
-                    case DropPosition.Above:
-                        destinationFolder = TreeMutator.FindContainer(_root, targetModel) ?? _root;
-                        insertionIndex = destinationFolder.Children.IndexOf(targetModel);
-                        break;
-                    case DropPosition.Below:
-                        destinationFolder = TreeMutator.FindContainer(_root, targetModel) ?? _root;
-                        insertionIndex = destinationFolder.Children.IndexOf(targetModel) + 1;
-                        break;
-                    case DropPosition.Into:
-                    default:
-                        destinationFolder = (FolderNode)targetModel;
-                        insertionIndex = destinationFolder.Children.Count;
-                        break;
+                    destinationFolder = _root;
+                    insertionIndex = _root.Children.Count;
                 }
+                else
+                {
+                    var targetModel = (TreeNodeModel)target.Tag;
+
+                    switch (position)
+                    {
+                        case DropPosition.Above:
+                            destinationFolder = TreeMutator.FindContainer(_root, targetModel) ?? _root;
+                            insertionIndex = destinationFolder.Children.IndexOf(targetModel);
+                            break;
+                        case DropPosition.Below:
+                            destinationFolder = TreeMutator.FindContainer(_root, targetModel) ?? _root;
+                            insertionIndex = destinationFolder.Children.IndexOf(targetModel) + 1;
+                            break;
+                        case DropPosition.Into:
+                        default:
+                            destinationFolder = (FolderNode)targetModel;
+                            insertionIndex = destinationFolder.Children.Count;
+                            break;
+                    }
+                }
+
+                if (!TreeMutator.MoveNode(draggedModel, destinationFolder, insertionIndex, _root))
+                    return;
+
+                RefreshFromModel();
+
+                var newTn = FindByModelId(_tree.Nodes, draggedModel.Id);
+                if (newTn != null) { _tree.SelectedNode = newTn; newTn.EnsureVisible(); }
+
+                _stateStore?.MarkDirty(_root, draggedModel.Id);
             }
-
-            if (!TreeMutator.MoveNode(draggedModel, destinationFolder, insertionIndex, _root))
-                return;
-
-            RefreshFromModel();
-
-            var newTn = FindByModelId(_tree.Nodes, draggedModel.Id);
-            if (newTn != null) { _tree.SelectedNode = newTn; newTn.EnsureVisible(); }
-
-            _stateStore?.MarkDirty(_root, draggedModel.Id);
+            catch (Exception ex) { ReportError("Tree_DragDrop", ex); }
         }
 
         protected override void Dispose(bool disposing)
