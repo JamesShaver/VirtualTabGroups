@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using VirtualTabGroups.Core;
 using VirtualTabGroups.Plugin.Npp;
+using VirtualTabGroups.Plugin.UI;
 
 namespace VirtualTabGroups.Plugin
 {
@@ -18,6 +19,8 @@ namespace VirtualTabGroups.Plugin
         private static StateStore _stateStore;
         private static FolderNode _root;
         private static NotepadPlusPlusObserver _observer;
+
+        internal static ThemeManager Theme { get; private set; }
 
         // Menu item command IDs.
         private const int CmdId_ShowPanel = 0;
@@ -82,7 +85,7 @@ namespace VirtualTabGroups.Plugin
                     break;
 
                 case NppNotif.NPPN_DARKMODECHANGED:
-                    // Phase 6 wires theme refresh here.
+                    Theme?.RefreshColors();
                     break;
 
                 case NppNotif.NPPN_SHUTDOWN:
@@ -110,6 +113,9 @@ namespace VirtualTabGroups.Plugin
         {
             if (_stateStore == null) return;
             _root = _stateStore.Load();
+
+            Theme = new ThemeManager(new Win32NppMessageSender(_nppData._nppHandle));
+            Theme.Initialize();
         }
 
         private static void OnNppShutdown()
