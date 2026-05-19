@@ -16,6 +16,10 @@ namespace VirtualTabGroups.Plugin
         private StateStore _stateStore;
         private Guid? _currentSelectedId;
 
+        // Drag-drop: hover-expand state.
+        private TreeNode _hoverNode;
+        private readonly Timer _hoverTimer = new Timer { Interval = 500 };
+
         public DarkAwareTreeView Tree => _tree;
 
         public VirtualTabGroupsPanel()
@@ -55,6 +59,14 @@ namespace VirtualTabGroups.Plugin
             };
             _tree.DragOver += Tree_DragOver;
             _tree.DragDrop += Tree_DragDrop;
+
+            // Hover-expand timer.
+            _hoverTimer.Tick += (s, ev) =>
+            {
+                _hoverTimer.Stop();
+                if (_hoverNode != null && _hoverNode.Tag is FolderNode && !_hoverNode.IsExpanded)
+                    _hoverNode.Expand();
+            };
 
             try
             {
@@ -335,7 +347,7 @@ namespace VirtualTabGroups.Plugin
         }
 
         // ──────────────────────────────────────────────
-        // Drag-and-drop support (Task 32)
+        // Drag-and-drop support (Tasks 32–33)
         // ──────────────────────────────────────────────
 
         private enum DropPosition { Above, Into, Below, None }
@@ -358,23 +370,40 @@ namespace VirtualTabGroups.Plugin
             var target = _tree.GetNodeAt(clientPoint);
 
             var dragged = (TreeNode)e.Data.GetData(typeof(TreeNode));
-            if (target == null) { e.Effect = DragDropEffects.Move; return; }
 
-            if (dragged.Tag is FolderNode draggedFolder && target.Tag is TreeNodeModel targetModel)
+            // Cyclic-drop guard.
+            if (target != null && dragged.Tag is FolderNode draggedFolder && target.Tag is TreeNodeModel targetModel)
             {
-                if (target == dragged) { e.Effect = DragDropEffects.None; return; }
+                if (target == dragged) { e.Effect = DragDropEffects.None; _hoverTimer.Stop(); return; }
                 if (TreeMutator.FindContainer(draggedFolder, targetModel) != null)
                 {
                     e.Effect = DragDropEffects.None;
+                    _hoverTimer.Stop();
                     return;
                 }
             }
 
             e.Effect = DragDropEffects.Move;
+
+            // Hover-timer management for auto-expand.
+            if (target != null && target != _hoverNode)
+            {
+                _hoverNode = target;
+                _hoverTimer.Stop();
+                if (target.Tag is FolderNode && !target.IsExpanded) _hoverTimer.Start();
+            }
+            else if (target == null)
+            {
+                _hoverNode = null;
+                _hoverTimer.Stop();
+            }
         }
 
         private void Tree_DragDrop(object sender, DragEventArgs e)
         {
+            _hoverTimer.Stop();
+            _hoverNode = null;
+
             if (!e.Data.GetDataPresent(typeof(TreeNode))) return;
 
             var dragged = (TreeNode)e.Data.GetData(typeof(TreeNode));
@@ -428,7 +457,11 @@ namespace VirtualTabGroups.Plugin
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing) _icons.Dispose();
+            if (disposing)
+            {
+                _icons.Dispose();
+                _hoverTimer.Dispose();
+            }
             base.Dispose(disposing);
         }
     }
