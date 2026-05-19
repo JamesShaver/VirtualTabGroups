@@ -9,11 +9,18 @@ namespace VirtualTabGroups.Core
     {
         private readonly string _stateFilePath;
         private readonly IStateStoreObserver _observer;
+        private readonly System.Threading.Timer _debounceTimer;
+        private readonly TimeSpan _debounceInterval;
 
         public StateStore(string stateFilePath, IStateStoreObserver observer = null)
+            : this(stateFilePath, observer, TimeSpan.FromMilliseconds(500)) { }
+
+        internal StateStore(string stateFilePath, IStateStoreObserver observer, TimeSpan debounce)
         {
             _stateFilePath = stateFilePath ?? throw new ArgumentNullException(nameof(stateFilePath));
             _observer = observer;
+            _debounceInterval = debounce;
+            _debounceTimer = new System.Threading.Timer(_ => OnDebounceFired(), null, System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);
         }
 
         public Guid? LastSelectedId { get; private set; }
@@ -89,7 +96,6 @@ namespace VirtualTabGroups.Core
             var settings = new JsonSerializerSettings
             {
                 Converters = { new NodeJsonConverter() },
-                Formatting = Formatting.Indented,
             };
 
             var envelope = new JObject
@@ -99,12 +105,31 @@ namespace VirtualTabGroups.Core
                 ["root"] = JToken.FromObject(root, JsonSerializer.Create(settings)),
             };
 
-            _pendingJson = envelope.ToString(Formatting.Indented);
+            var json = envelope.ToString(Formatting.Indented);
+            lock (_writeLock)
+            {
+                _pendingJson = json;
+            }
+
+            _debounceTimer.Change(_debounceInterval, System.Threading.Timeout.InfiniteTimeSpan);
+        }
+
+        private void OnDebounceFired()
+        {
+            try
+            {
+                WritePendingNow();
+            }
+            catch (Exception)
+            {
+                // Task 11 wires this to observer.OnSaveFailed.
+            }
         }
 
         public void Flush()
         {
             if (IsReadOnly) return;
+            _debounceTimer.Change(System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);
             WritePendingNow();
         }
 
@@ -156,6 +181,10 @@ namespace VirtualTabGroups.Core
             }
         }
 
-        public void Dispose() => Flush();
+        public void Dispose()
+        {
+            try { Flush(); }
+            finally { _debounceTimer.Dispose(); }
+        }
     }
 }

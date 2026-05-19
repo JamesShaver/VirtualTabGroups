@@ -204,5 +204,32 @@ namespace VirtualTabGroups.Tests
             Assert.True(File.Exists(path));
             Assert.False(File.Exists(path + ".tmp"));
         }
+
+        [Fact]
+        public void MarkDirty_BurstOfCalls_CoalescesIntoOneWrite()
+        {
+            var path = NewTempStatePath();
+            using (var store = new StateStore(path, null, System.TimeSpan.FromMilliseconds(150)))
+            {
+                for (int i = 0; i < 30; i++)
+                {
+                    var root = new FolderNode("");
+                    root.Children.Add(new FileNode("file" + i + ".txt", @"C:\f.txt"));
+                    store.MarkDirty(root, null);
+                }
+
+                Assert.False(File.Exists(path), "no write should have happened yet during the burst");
+                System.Threading.Thread.Sleep(400);  // > debounce window
+                Assert.True(File.Exists(path), "exactly one write should land after debounce expires");
+            }
+
+            using (var store2 = new StateStore(path))
+            {
+                var reloaded = store2.Load();
+                Assert.Single(reloaded.Children);
+                // Final state should reflect the LAST MarkDirty (file29.txt).
+                Assert.Equal("file29.txt", ((FileNode)reloaded.Children[0]).Name);
+            }
+        }
     }
 }
