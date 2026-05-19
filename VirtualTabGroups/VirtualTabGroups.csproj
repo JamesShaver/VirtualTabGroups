@@ -65,6 +65,7 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Core\IStateStoreObserver.cs" />
     <Compile Include="Core\TreeNodeModel.cs" />
     <Compile Include="Core\FolderNode.cs" />
     <Compile Include="Core\FileNode.cs" />
