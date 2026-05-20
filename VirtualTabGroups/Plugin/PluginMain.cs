@@ -45,6 +45,12 @@ namespace VirtualTabGroups.Plugin
         private static Action _showPanelDelegate;
         private static Action _aboutDelegate;
 
+        // 16x16 icon for the docked-panel tab. Stored statically so the HICON it
+        // exposes stays valid for the plugin's lifetime — Notepad++ keeps a reference
+        // to the HICON after RegisterAsDockedPanel returns.
+        private static System.Drawing.Icon _tabIcon;
+        private static IntPtr _tabIconHandle = IntPtr.Zero;
+
         // ---- Notepad++ unmanaged entry points ----
 
         /// <summary>
@@ -316,6 +322,26 @@ namespace VirtualTabGroups.Plugin
 
         private static void OnShowPanel()
         {
+            // Load the 16x16 tab icon from our embedded plugin.ico.
+            // Held in a static field so the HICON stays valid for the panel lifetime.
+            if (_tabIconHandle == IntPtr.Zero)
+            {
+                try
+                {
+                    using (var stream = typeof(PluginMain).Assembly.GetManifestResourceStream(
+                        "VirtualTabGroups.Plugin.Resources.plugin.ico"))
+                    {
+                        if (stream != null)
+                        {
+                            // Pick the 16x16 frame from the multi-resolution .ico.
+                            _tabIcon = new System.Drawing.Icon(stream, new System.Drawing.Size(16, 16));
+                            _tabIconHandle = _tabIcon.Handle;
+                        }
+                    }
+                }
+                catch { /* missing icon resource is non-fatal */ }
+            }
+
             if (_panel == null)
             {
                 _panel = new VirtualTabGroupsPanel();
@@ -327,8 +353,8 @@ namespace VirtualTabGroups.Plugin
                     moduleName: "VirtualTabGroups",
                     caption: PluginName,
                     cmdId: CmdId_ShowPanel,
-                    dockingFlags: NppTbMsg.DWS_DF_CONT_LEFT,
-                    iconHandle: IntPtr.Zero);
+                    dockingFlags: NppTbMsg.DWS_DF_CONT_LEFT | NppTbMsg.DWS_ICONTAB,
+                    iconHandle: _tabIconHandle);
 
                 Win32.SendMessage(_nppData._nppHandle,
                     (int)NppMsg.NPPM_DARKMODESUBCLASSANDTHEME,
@@ -395,6 +421,18 @@ namespace VirtualTabGroups.Plugin
         internal static void OpenFile(string path)
         {
             if (string.IsNullOrEmpty(path)) return;
+
+            if (!System.IO.Path.IsPathRooted(path))
+            {
+                CrashLog.Write("OpenFile: refused non-rooted path '" + path + "'");
+                System.Windows.Forms.MessageBox.Show(
+                    "This entry refers to an unsaved document and cannot be reopened.\n\nIt was added before the plugin started rejecting unsaved buffers; you can remove it via the context menu.",
+                    "Virtual Tab Groups",
+                    System.Windows.Forms.MessageBoxButtons.OK,
+                    System.Windows.Forms.MessageBoxIcon.Information);
+                return;
+            }
+
             IntPtr pathPtr = Marshal.StringToHGlobalUni(path);
             try
             {
