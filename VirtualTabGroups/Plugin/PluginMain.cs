@@ -250,8 +250,46 @@ namespace VirtualTabGroups.Plugin
 
         private static void OnNppShutdown()
         {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            CrashLog.Write("OnNppShutdown: entered");
+
             try { _stateStore?.Flush(); }
-            finally { _stateStore?.Dispose(); }
+            catch (Exception ex) { CrashLog.Write("OnNppShutdown: state flush failed - " + ex.Message); }
+            finally
+            {
+                try { _stateStore?.Dispose(); }
+                catch (Exception ex) { CrashLog.Write("OnNppShutdown: state dispose failed - " + ex.Message); }
+            }
+
+            // Without explicit Dispose, the panel's owned resources (ToolTip's hidden window,
+            // cached GDI brushes/pens, the embedded TreeView) get finalized off-thread once
+            // Notepad++ tears its window tree down. Finalization can hold the process alive
+            // long enough that a quick re-launch of notepad++.exe sees the dying instance and
+            // does nothing — making the user click again. Dispose synchronously here.
+            try
+            {
+                if (_panel != null && !_panel.IsDisposed)
+                {
+                    _panel.Dispose();
+                }
+            }
+            catch (Exception ex) { CrashLog.Write("OnNppShutdown: panel dispose failed - " + ex.Message); }
+            finally { _panel = null; }
+
+            // Release the 16x16 tab icon. The HICON is owned by the managed Icon, so
+            // disposing the Icon releases the GDI handle (no separate DestroyIcon needed).
+            try
+            {
+                _tabIcon?.Dispose();
+            }
+            catch (Exception ex) { CrashLog.Write("OnNppShutdown: icon dispose failed - " + ex.Message); }
+            finally
+            {
+                _tabIcon = null;
+                _tabIconHandle = IntPtr.Zero;
+            }
+
+            CrashLog.Write("OnNppShutdown: complete in " + sw.ElapsedMilliseconds + "ms");
         }
 
         // ---- Helpers ----
