@@ -9,6 +9,14 @@ namespace VirtualTabGroups.Plugin.UI
     {
         private ThemeManager _theme;
 
+        // Cached GDI objects — rebuilt in ApplyTheme, disposed in DisposeCachedGdi.
+        private SolidBrush _bgBrush;
+        private SolidBrush _bgHotterBrush;
+        private SolidBrush _textBrush;
+        private Pen _edgeDottedPen;
+        private Pen _hotEdgePen;
+        private Brush _chevronBrush;
+
         private string _emptyStateText;
         public string EmptyStateText
         {
@@ -27,6 +35,12 @@ namespace VirtualTabGroups.Plugin.UI
             LabelEdit = true;
             AllowDrop = true;
             FullRowSelect = false;
+
+            // Double-buffer the TreeView to reduce flicker during owner-draw paint passes.
+            // TreeView's DoubleBuffered is protected — set via the control-styles API.
+            SetStyle(System.Windows.Forms.ControlStyles.OptimizedDoubleBuffer
+                   | System.Windows.Forms.ControlStyles.AllPaintingInWmPaint, true);
+            UpdateStyles();
         }
 
         public void AttachTheme(ThemeManager theme)
@@ -48,7 +62,36 @@ namespace VirtualTabGroups.Plugin.UI
             BackColor = _theme.Background;
             ForeColor = _theme.Text;
             LineColor = _theme.Edge;
+
+            DisposeCachedGdi();
+            _bgBrush        = new SolidBrush(_theme.Background);
+            _bgHotterBrush  = new SolidBrush(_theme.BackgroundHotter);
+            _textBrush      = new SolidBrush(_theme.Text);
+            _chevronBrush   = new SolidBrush(_theme.Text);
+            _edgeDottedPen  = new Pen(_theme.Edge) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dot };
+            _hotEdgePen     = new Pen(_theme.HotEdge, 2);
+
             Invalidate();
+        }
+
+        private void DisposeCachedGdi()
+        {
+            _bgBrush?.Dispose();       _bgBrush       = null;
+            _bgHotterBrush?.Dispose(); _bgHotterBrush = null;
+            _textBrush?.Dispose();     _textBrush     = null;
+            _chevronBrush?.Dispose();  _chevronBrush  = null;
+            _edgeDottedPen?.Dispose(); _edgeDottedPen = null;
+            _hotEdgePen?.Dispose();    _hotEdgePen    = null;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                DetachTheme();
+                DisposeCachedGdi();
+            }
+            base.Dispose(disposing);
         }
 
         protected override void OnDrawNode(DrawTreeNodeEventArgs e)
@@ -57,29 +100,25 @@ namespace VirtualTabGroups.Plugin.UI
             {
                 if (_theme == null) { base.OnDrawNode(e); return; }
 
-                var bg = (e.State & TreeNodeStates.Selected) != 0
-                    ? _theme.BackgroundHotter
-                    : _theme.Background;
-                using (var brush = new SolidBrush(bg))
-                    e.Graphics.FillRectangle(brush, new Rectangle(0, e.Bounds.Top, Width, e.Bounds.Height));
+                // Fill background using cached brushes — no per-call allocation.
+                var brush = (e.State & TreeNodeStates.Selected) != 0 ? _bgHotterBrush : _bgBrush;
+                e.Graphics.FillRectangle(brush, new Rectangle(0, e.Bounds.Top, Width, e.Bounds.Height));
 
                 int indent = e.Node.Level * Indent + 2;
 
-                if (e.Node.Level > 0)
+                // Connector lines for child nodes — uses cached dotted pen.
+                if (e.Node.Level > 0 && _edgeDottedPen != null)
                 {
-                    using (var pen = new Pen(_theme.Edge) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dot })
-                    {
-                        int parentX = (e.Node.Level - 1) * Indent + 6;
-                        int midY = e.Bounds.Top + e.Bounds.Height / 2;
-                        e.Graphics.DrawLine(pen, parentX, e.Bounds.Top, parentX, midY);
-                        e.Graphics.DrawLine(pen, parentX, midY, parentX + Indent, midY);
-                    }
+                    int parentX = (e.Node.Level - 1) * Indent + 6;
+                    int midY    = e.Bounds.Top + e.Bounds.Height / 2;
+                    e.Graphics.DrawLine(_edgeDottedPen, parentX, e.Bounds.Top, parentX, midY);
+                    e.Graphics.DrawLine(_edgeDottedPen, parentX, midY, parentX + Indent, midY);
                 }
 
                 if (e.Node.Nodes.Count > 0)
                 {
                     var glyphRect = new Rectangle(indent, e.Bounds.Top + (e.Bounds.Height - 8) / 2, 8, 8);
-                    DrawChevron(e.Graphics, glyphRect, e.Node.IsExpanded, _theme.Text);
+                    DrawChevron(e.Graphics, glyphRect, e.Node.IsExpanded);
                 }
                 indent += 14;
 
@@ -91,6 +130,7 @@ namespace VirtualTabGroups.Plugin.UI
                 }
 
                 var textRect = new Rectangle(indent, e.Bounds.Top, Width - indent, e.Bounds.Height);
+                // TextRenderer.DrawText accepts Color directly — no GDI allocation needed.
                 TextRenderer.DrawText(e.Graphics, e.Node.Text, Font, textRect, _theme.Text,
                     TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
 
@@ -103,20 +143,19 @@ namespace VirtualTabGroups.Plugin.UI
             }
         }
 
-        private static void DrawChevron(System.Drawing.Graphics g, Rectangle r, bool expanded, System.Drawing.Color color)
+        // Draws the expand/collapse chevron using the cached chevron brush.
+        private void DrawChevron(System.Drawing.Graphics g, Rectangle r, bool expanded)
         {
-            using (var brush = new SolidBrush(color))
+            if (_chevronBrush == null) return;
+            if (expanded)
             {
-                if (expanded)
-                {
-                    var pts = new[] { new Point(r.Left, r.Top + 2), new Point(r.Right, r.Top + 2), new Point(r.Left + r.Width / 2, r.Bottom - 1) };
-                    g.FillPolygon(brush, pts);
-                }
-                else
-                {
-                    var pts = new[] { new Point(r.Left + 2, r.Top), new Point(r.Left + 2, r.Bottom), new Point(r.Right - 1, r.Top + r.Height / 2) };
-                    g.FillPolygon(brush, pts);
-                }
+                var pts = new[] { new Point(r.Left, r.Top + 2), new Point(r.Right, r.Top + 2), new Point(r.Left + r.Width / 2, r.Bottom - 1) };
+                g.FillPolygon(_chevronBrush, pts);
+            }
+            else
+            {
+                var pts = new[] { new Point(r.Left + 2, r.Top), new Point(r.Left + 2, r.Bottom), new Point(r.Right - 1, r.Top + r.Height / 2) };
+                g.FillPolygon(_chevronBrush, pts);
             }
         }
 
@@ -124,14 +163,28 @@ namespace VirtualTabGroups.Plugin.UI
 
         public void ShowInsertionLine(int y)
         {
+            // Skip redundant invalidates when the line position hasn't changed.
+            if (_insertionLine.HasValue && _insertionLine.Value.Top == y)
+                return;
+
+            var oldY = _insertionLine?.Top;
             _insertionLine = new Rectangle(0, y, Width, 1);
-            Invalidate();
+
+            // Invalidate only the narrow strips around the new and old line positions
+            // instead of the entire client area, cutting repaint work at 30-60 Hz.
+            const int strip = 3;
+            Invalidate(new Rectangle(0, y - strip, Width, strip * 2 + 1));
+            if (oldY.HasValue)
+                Invalidate(new Rectangle(0, oldY.Value - strip, Width, strip * 2 + 1));
         }
 
         public void ClearInsertionLine()
         {
+            if (_insertionLine == null) return;
+            var oldY = _insertionLine.Value.Top;
             _insertionLine = null;
-            Invalidate();
+            const int strip = 3;
+            Invalidate(new Rectangle(0, oldY - strip, Width, strip * 2 + 1));
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -139,29 +192,23 @@ namespace VirtualTabGroups.Plugin.UI
             try
             {
                 base.OnPaint(e);
-                if (_insertionLine != null && _theme != null)
+                if (_insertionLine != null && _hotEdgePen != null)
                 {
-                    using (var pen = new Pen(_theme.HotEdge, 2))
-                        e.Graphics.DrawLine(pen, _insertionLine.Value.Left, _insertionLine.Value.Top, _insertionLine.Value.Right, _insertionLine.Value.Top);
+                    e.Graphics.DrawLine(_hotEdgePen,
+                        _insertionLine.Value.Left,  _insertionLine.Value.Top,
+                        _insertionLine.Value.Right, _insertionLine.Value.Top);
                 }
 
                 if (!string.IsNullOrEmpty(_emptyStateText) && Nodes.Count == 0 && _theme != null)
                 {
-                    var bounds = ClientRectangle;
-                    var textRect = new Rectangle(
-                        bounds.Left,
-                        bounds.Top + bounds.Height / 3,
-                        bounds.Width,
-                        Font.Height + 4);
+                    var bounds   = ClientRectangle;
+                    var textRect = new Rectangle(bounds.Left, bounds.Top + bounds.Height / 3, bounds.Width, Font.Height + 4);
                     TextRenderer.DrawText(e.Graphics, _emptyStateText, Font, textRect,
                         _theme.DisabledText,
                         TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
                 }
             }
-            catch (Exception ex)
-            {
-                CrashLog.WriteException("DarkAwareTreeView.OnPaint", ex);
-            }
+            catch (Exception ex) { CrashLog.WriteException("DarkAwareTreeView.OnPaint", ex); }
         }
 
         protected override void OnMouseDown(MouseEventArgs e)
