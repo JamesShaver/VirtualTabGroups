@@ -197,7 +197,7 @@ msbuild VirtualTabGroups.sln /p:Configuration=Release /p:Platform=x64
 
 Output lands in `VirtualTabGroups\bin\Release\x64\`. The two files needed for deployment are `VirtualTabGroups.dll` and `Newtonsoft.Json.dll`.
 
-For `x86` or `ARM64`, swap the `/p:Platform=` value.
+For `x86`, swap the `/p:Platform=` value. **ARM64 is not currently supported** — the 3F.DllExport IL post-processor we use for unmanaged exports doesn't yet recognize `ARM64` as a cpu platform target. The solution still has the configuration in case upstream adds support, but the build will fail with `Unknown cpu platform 'ARM64'`.
 
 ### Running tests
 

@@ -28,18 +28,20 @@ jobs:
       - name: Build x86
         run: msbuild VirtualTabGroups.sln /p:Configuration=Release /p:Platform=x86
 
-      - name: Build ARM64
-        run: msbuild VirtualTabGroups.sln /p:Configuration=Release /p:Platform=ARM64
+      # ARM64 is not built. 3F.DllExport 1.7.4's IL post-processor only recognizes
+      # x86 / x64 as cpu platforms ("Unknown cpu platform 'ARM64'") and there's no
+      # released upstream support yet. Notepad++ ARM64 users can still install
+      # manually from GitHub releases; we just don't advertise to them via the
+      # Plugin Admin's arm64 list.
 
       - name: Package zips
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path artifacts -Force | Out-Null
-          foreach ($arch in @('x64', 'x86', 'ARM64')) {
+          foreach ($arch in @('x64', 'x86')) {
             $stage = "stage_$arch"
             New-Item -ItemType Directory -Path $stage -Force | Out-Null
             # Only two DLLs ship: the plugin entry-point and its JSON dependency.
-            # VirtualTabGroups.Managed.dll no longer exists — the C++/CLI bridge was removed.
             Copy-Item "VirtualTabGroups\bin\Release\$arch\VirtualTabGroups.dll" -Destination $stage
             Copy-Item "VirtualTabGroups\bin\Release\$arch\Newtonsoft.Json.dll" -Destination $stage
             Compress-Archive -Path "$stage\*" -DestinationPath "artifacts\VirtualTabGroups_$arch.zip"
@@ -51,10 +53,8 @@ jobs:
         run: |
           $h64 = (Get-FileHash artifacts\VirtualTabGroups_x64.zip -Algorithm SHA256).Hash
           $h86 = (Get-FileHash artifacts\VirtualTabGroups_x86.zip -Algorithm SHA256).Hash
-          $harm = (Get-FileHash artifacts\VirtualTabGroups_ARM64.zip -Algorithm SHA256).Hash
           echo "h64=$h64" >> $env:GITHUB_OUTPUT
           echo "h86=$h86" >> $env:GITHUB_OUTPUT
-          echo "harm=$harm" >> $env:GITHUB_OUTPUT
 
       - name: Create GitHub Release (draft)
         uses: softprops/action-gh-release@v2
@@ -63,13 +63,11 @@ jobs:
           files: |
             artifacts/VirtualTabGroups_x64.zip
             artifacts/VirtualTabGroups_x86.zip
-            artifacts/VirtualTabGroups_ARM64.zip
           body: |
             ## Hashes (for Plugin Admin submission)
 
             - VirtualTabGroups_x64.zip: `${{ steps.hashes.outputs.h64 }}`
             - VirtualTabGroups_x86.zip: `${{ steps.hashes.outputs.h86 }}`
-            - VirtualTabGroups_ARM64.zip: `${{ steps.hashes.outputs.harm }}`
 
             ## Changes
 
