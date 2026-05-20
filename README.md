@@ -49,8 +49,9 @@ The panel is **purely virtual**. It does not scan your disk, mirror folders, or 
 
 ### Persistence
 - **State survives restarts.** Your virtual tree (folders, files, expanded state, last selection) is saved to a JSON file in Notepad++'s plugin config directory and loaded again on next launch.
-- **Auto-removal when files close.** Closing a file via Notepad++'s tab `X` removes it from any virtual folder it was in. Saves you from accumulating stale references.
-- **Unsaved buffers are session-only.** You can absolutely add `new 17` or any other unsaved scratch buffer to a folder — useful for organizing work-in-progress alongside saved files. On Notepad++ restart, references to unsaved buffers are silently cleaned up (their data didn't survive shutdown, so the references would be dead anyway).
+- **Panel visibility survives restarts.** If the panel was open when you closed Notepad++, it reopens automatically next launch — same way the built-in docked panels behave. No need to bring it up from the Plugins menu every session. The panel registers itself with Notepad++'s docking manager early enough that the saved layout from `dockingMgr.xml` applies cleanly.
+- **Auto-removal when files close.** Closing a file via Notepad++'s tab `X` removes it from any virtual folder it was in. Saves you from accumulating stale references. The auto-removal is suspended during Notepad++ shutdown so the per-tab close notifications don't strip everything that was open at exit time.
+- **Unsaved buffers can persist across sessions.** Add `new 17` or any other unsaved scratch buffer to a folder — useful for organizing work-in-progress alongside saved files. If Notepad++'s session backup is enabled (*Settings → Preferences → Backup → "Remember current session for next launch"*), the buffer comes back on relaunch with the same name and your virtual entry stays valid. With session backup off, the buffer is gone after shutdown and the dead reference is silently cleaned up on the next launch — saved-file entries are unaffected either way.
 - **Corrupt-state recovery.** If something hand-edits or corrupts the state file, the plugin backs it up to `state.json.corrupt-yyyyMMdd-HHmmssZ-<random>` and starts with a clean tree rather than crashing. A dialog tells you where the backup landed.
 - **Future-version safety.** If a future version of the plugin writes a newer schema, an older plugin reading that file enters read-only mode for the session rather than overwriting newer data.
 
@@ -286,6 +287,10 @@ If you're interested in any of these, an issue or PR is welcome — see [Contrib
 
 ### "Plugin is not compatible" error on launch
 - The most common cause is deploying a Debug build (links against `VCRUNTIME140D.dll`, a non-redistributable). Always deploy from `bin\Release\x64\`, not `bin\Debug\`.
+
+### Notepad++ takes two clicks to relaunch after closing
+- Not caused by this plugin. If you have several unsaved scratch buffers open at shutdown with session backup enabled, Notepad++ writes each one to `%appdata%\Notepad++\backup\` before the process actually exits, holding its single-instance mutex for a few extra seconds. Clicking the Notepad++ icon during that window is bounced to the dying process (invisibly) and does nothing — a second click after the process is fully gone launches a fresh instance normally.
+- Confirmed with `plugin.log`: our shutdown disposal completes in ~30 ms, and the gap before the next launch is entirely Notepad++-side. Closing unused scratch buffers before quitting (or disabling session backup if you don't need it) shortens the gap.
 
 ### Things break in unexpected ways
 - Open `%appdata%\Notepad++\plugins\config\VirtualTabGroups\plugin.log`. The plugin logs every notable event (startup, dialogs, exceptions with stack traces, breadcrumbs through user actions). Most issues are visible in one read.
