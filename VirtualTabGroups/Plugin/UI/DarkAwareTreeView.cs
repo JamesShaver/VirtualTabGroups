@@ -34,7 +34,11 @@ namespace VirtualTabGroups.Plugin.UI
             HideSelection = false;
             LabelEdit = true;
             AllowDrop = true;
-            FullRowSelect = false;
+            // FullRowSelect = true so WinForms' hit-test treats the entire row as
+            // clickable. Our owner-draw paints text at a custom x-position (after the
+            // chevron + icon); with FullRowSelect=false the default hit-test thinks the
+            // text is at its default position and clicks on the visible text miss.
+            FullRowSelect = true;
 
             // Double-buffer the TreeView to reduce flicker during owner-draw paint passes.
             // TreeView's DoubleBuffered is protected — set via the control-styles API.
