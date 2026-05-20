@@ -345,7 +345,22 @@ namespace VirtualTabGroups.Plugin
 
                 if (target is FileNode fileTarget)
                 {
+                    // Saved files have rooted paths (e.g., "C:\src\foo.cs"). Unsaved buffers
+                    // have names like "new 40" — there's no on-disk file to reveal or path
+                    // worth copying, so those items are shown but grayed out.
+                    bool isOnDisk = System.IO.Path.IsPathRooted(fileTarget.Path);
+
                     _menu.Items.Add(new ToolStripMenuItem("Open", null, (s, ev) => OnFileOpen(fileTarget)));
+                    _menu.Items.Add(new ToolStripSeparator());
+
+                    var revealItem = new ToolStripMenuItem("Reveal in Explorer", null,
+                        (s, ev) => OnRevealInExplorer(fileTarget)) { Enabled = isOnDisk };
+                    _menu.Items.Add(revealItem);
+
+                    var copyPathItem = new ToolStripMenuItem("Copy full path", null,
+                        (s, ev) => OnCopyFullPath(fileTarget)) { Enabled = isOnDisk };
+                    _menu.Items.Add(copyPathItem);
+
                     _menu.Items.Add(new ToolStripSeparator());
                     _menu.Items.Add(new ToolStripMenuItem("Rename", null, (s, ev) => hit.Node.BeginEdit()));
                     _menu.Items.Add(new ToolStripMenuItem("Remove…", null, (s, ev) => OnRemove(fileTarget)));
@@ -386,6 +401,40 @@ namespace VirtualTabGroups.Plugin
                 ReportError("Open File", ex);
             }
         }
+
+        /// <summary>
+        /// Opens Windows Explorer at the file's parent folder with the file selected.
+        /// No-op for unsaved buffers (non-rooted paths) — the menu item is grayed out
+        /// in that case, but we re-check here for defense-in-depth.
+        /// </summary>
+        private void OnRevealInExplorer(FileNode file)
+        {
+            try
+            {
+                if (file == null || !System.IO.Path.IsPathRooted(file.Path)) return;
+                // /select,"<path>" opens Explorer at the parent folder with the file highlighted.
+                // Filenames can't contain " on Windows (NTFS forbids it), so simple quoting suffices.
+                // Wrap in using() so the returned Process handle is disposed — otherwise each
+                // invocation leaks a Win32 process handle for the lifetime of the plugin.
+                using (System.Diagnostics.Process.Start("explorer.exe", "/select,\"" + file.Path + "\"")) { }
+            }
+            catch (Exception ex) { ReportError("Reveal in Explorer", ex); }
+        }
+
+        /// <summary>
+        /// Copies the file's absolute path to the clipboard. No-op for unsaved buffers
+        /// (non-rooted paths) — the menu item is grayed out in that case.
+        /// </summary>
+        private void OnCopyFullPath(FileNode file)
+        {
+            try
+            {
+                if (file == null || !System.IO.Path.IsPathRooted(file.Path)) return;
+                Clipboard.SetText(file.Path);
+            }
+            catch (Exception ex) { ReportError("Copy full path", ex); }
+        }
+
         private void OnAddActive(FolderNode targetFolder)
         {
             try
