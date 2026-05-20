@@ -210,6 +210,13 @@ namespace VirtualTabGroups.Plugin
 
             Theme = new ThemeManager(new Win32NppMessageSender(_nppData._nppHandle));
             Theme.Initialize();
+
+            // Eagerly create and register the panel so Notepad++'s docking manager
+            // can restore its last-session visibility from dockingMgr.xml. If we wait
+            // until the user clicks the menu (lazy create), Notepad++ has already
+            // finished applying its saved layout by then and our panel can never
+            // be visible at startup.
+            EnsurePanelRegistered();
         }
 
         private static void OnNppShutdown()
@@ -327,50 +334,67 @@ namespace VirtualTabGroups.Plugin
             }
         }
 
-        private static void OnShowPanel()
+        /// <summary>
+        /// Loads the 16x16 panel-tab icon from the embedded resource once.
+        /// </summary>
+        private static void LoadTabIconOnce()
         {
-            // Load the 16x16 tab icon from our embedded plugin.ico.
-            // Held in a static field so the HICON stays valid for the panel lifetime.
-            if (_tabIconHandle == IntPtr.Zero)
+            if (_tabIconHandle != IntPtr.Zero) return;
+            try
             {
-                try
+                using (var stream = typeof(PluginMain).Assembly.GetManifestResourceStream(
+                    "VirtualTabGroups.Plugin.Resources.plugin.ico"))
                 {
-                    using (var stream = typeof(PluginMain).Assembly.GetManifestResourceStream(
-                        "VirtualTabGroups.Plugin.Resources.plugin.ico"))
+                    if (stream != null)
                     {
-                        if (stream != null)
-                        {
-                            // Pick the 16x16 frame from the multi-resolution .ico.
-                            _tabIcon = new System.Drawing.Icon(stream, new System.Drawing.Size(16, 16));
-                            _tabIconHandle = _tabIcon.Handle;
-                        }
+                        _tabIcon = new System.Drawing.Icon(stream, new System.Drawing.Size(16, 16));
+                        _tabIconHandle = _tabIcon.Handle;
                     }
                 }
-                catch { /* missing icon resource is non-fatal */ }
             }
+            catch { /* missing icon resource is non-fatal */ }
+        }
 
-            if (_panel == null)
-            {
-                _panel = new VirtualTabGroupsPanel();
-                _panel.Show();
-                _panel.AttachTheme(Theme);
+        /// <summary>
+        /// Creates the panel form and registers it as a docked panel with Notepad++.
+        /// Idempotent — subsequent calls are no-ops. Called eagerly from OnNppReady so
+        /// Notepad++'s docking manager can restore the panel's last-session visibility
+        /// before the user even sees the editor window.
+        /// </summary>
+        private static void EnsurePanelRegistered()
+        {
+            if (_panel != null) return;
 
-                _panel.RegisterAsDockedPanel(
-                    nppHandle: _nppData._nppHandle,
-                    moduleName: "VirtualTabGroups",
-                    caption: PluginName,
-                    cmdId: CmdId_ShowPanel,
-                    dockingFlags: NppTbMsg.DWS_DF_CONT_LEFT | NppTbMsg.DWS_ICONTAB,
-                    iconHandle: _tabIconHandle);
+            LoadTabIconOnce();
 
-                Win32.SendMessage(_nppData._nppHandle,
-                    (int)NppMsg.NPPM_DARKMODESUBCLASSANDTHEME,
-                    new IntPtr(1),
-                    _panel.Handle);
+            _panel = new VirtualTabGroupsPanel();
+            // Force handle creation without making the form visible — Notepad++'s
+            // docking manager applies visibility from its saved layout right after
+            // we register, so an explicit Show() here would just cause a brief flash.
+            var _ = _panel.Handle;
+            _panel.AttachTheme(Theme);
 
-                _panel.BindRoot(_root, _stateStore, _stateStore.LastSelectedId);
-                return;
-            }
+            _panel.RegisterAsDockedPanel(
+                nppHandle: _nppData._nppHandle,
+                moduleName: "VirtualTabGroups",
+                caption: PluginName,
+                cmdId: CmdId_ShowPanel,
+                dockingFlags: NppTbMsg.DWS_DF_CONT_LEFT | NppTbMsg.DWS_ICONTAB,
+                iconHandle: _tabIconHandle);
+
+            Win32.SendMessage(_nppData._nppHandle,
+                (int)NppMsg.NPPM_DARKMODESUBCLASSANDTHEME,
+                new IntPtr(1),
+                _panel.Handle);
+
+            _panel.BindRoot(_root, _stateStore, _stateStore.LastSelectedId);
+        }
+
+        private static void OnShowPanel()
+        {
+            // Defensive: NPPN_READY normally runs before the user can click any menu item,
+            // but if something goes wrong, lazy-create the panel here as a fallback.
+            EnsurePanelRegistered();
 
             if (_panel.Visible)
                 _panel.HideDocked(_nppData._nppHandle);

@@ -43,6 +43,8 @@ The panel is **purely virtual**. It does not scan your disk, mirror folders, or 
 - **Rename** — `F2` or context menu, edits the *display label* only; the actual file on disk is never renamed.
 - **Remove** — removes the entry from the panel; **does not delete the file on disk**. Folder removals prompt for confirmation when non-empty.
 - **Open / activate** — double-click a file (or press `Enter` on it) to switch to its tab in Notepad++. If the file isn't currently open, it's reopened from disk. If it was an unsaved scratch buffer that's since been closed, you get a friendly "buffer no longer open" message instead of trying to create a file at a path that doesn't exist.
+- **Reveal in Explorer** — right-click a file → opens Windows Explorer at the file's parent folder with the file highlighted. Disabled for unsaved buffers (nothing to reveal).
+- **Copy full path** — right-click a file → puts the file's absolute path on the clipboard. Disabled for unsaved buffers.
 - **Expand All / Collapse All** — context menu actions for any folder, applies recursively to its subtree.
 
 ### Persistence
@@ -251,10 +253,9 @@ The model layer (`Core/`) is fully unit-tested without any Notepad++ instance. T
 These would all fit naturally with what the plugin already does. None are committed — but each one would slot in cleanly.
 
 ### Likely-soon
-- **"Reveal in Explorer"** in the file context menu — opens an Explorer window with the file selected.
-- **"Copy full path"** in the file context menu.
 - **Search / filter box** above the tree to quickly find a file in a large workspace.
-- **Customizable keybindings** — currently the menu shortcuts are baked in.
+- **Customizable keybindings** — currently the menu shortcuts are baked in. (Note: the *Show panel* shortcut `Ctrl+Shift+T` is already rebindable via *Notepad++ → Settings → Shortcut Mapper → Plugin commands*. This roadmap item is specifically about the in-panel shortcuts: `F2`, `Delete`, `Ctrl+N`, etc.)
+- **`Ctrl+C` to copy the selected file's path** without opening the context menu.
 
 ### Bigger ideas
 - **Multiple workspaces.** A dropdown above the tree to switch between, say, "Work project A", "Personal scripts", "Documentation cleanup" — each with its own root tree, saved to its own state file. Useful when you context-switch between unrelated projects.
