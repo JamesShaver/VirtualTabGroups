@@ -201,6 +201,13 @@ namespace VirtualTabGroups.Plugin
             if (_stateStore == null) return;
             _root = _stateStore.Load();
 
+            int purgedStale = PurgeUnsavedEntries(_root);
+            if (purgedStale > 0)
+            {
+                CrashLog.Write("OnNppReady: purged " + purgedStale + " stale unsaved-buffer entry(ies)");
+                _stateStore.MarkDirty(_root, _stateStore.LastSelectedId);
+            }
+
             Theme = new ThemeManager(new Win32NppMessageSender(_nppData._nppHandle));
             Theme.Initialize();
         }
@@ -422,23 +429,59 @@ namespace VirtualTabGroups.Plugin
         {
             if (string.IsNullOrEmpty(path)) return;
 
-            if (!System.IO.Path.IsPathRooted(path))
-            {
-                CrashLog.Write("OpenFile: refused non-rooted path '" + path + "'");
-                System.Windows.Forms.MessageBox.Show(
-                    "This entry refers to an unsaved document and cannot be reopened.\n\nIt was added before the plugin started rejecting unsaved buffers; you can remove it via the context menu.",
-                    "Virtual Tab Groups",
-                    System.Windows.Forms.MessageBoxButtons.OK,
-                    System.Windows.Forms.MessageBoxIcon.Information);
-                return;
-            }
+            // Rooted (saved file): NPPM_DOOPEN handles both already-open and on-disk cases.
+            // Non-rooted (unsaved buffer like "new 40"): NPPM_SWITCHTOFILE finds it by name
+            // among already-open buffers. NPPM_DOOPEN on a non-rooted name would try to
+            // open the name as a file path relative to Notepad++'s install dir, prompting
+            // "C:\Program Files\Notepad++\new 40 doesn't exist. Create it?" — which is wrong.
 
+            bool isUnsaved = !System.IO.Path.IsPathRooted(path);
             IntPtr pathPtr = Marshal.StringToHGlobalUni(path);
             try
             {
-                Win32.SendMessage(_nppData._nppHandle, (int)NppMsg.NPPM_DOOPEN, IntPtr.Zero, pathPtr);
+                int msg = isUnsaved ? (int)NppMsg.NPPM_SWITCHTOFILE : (int)NppMsg.NPPM_DOOPEN;
+                IntPtr result = Win32.SendMessage(_nppData._nppHandle, msg, IntPtr.Zero, pathPtr);
+
+                if (isUnsaved && result == IntPtr.Zero)
+                {
+                    // NPPM_SWITCHTOFILE returns FALSE when no open buffer matches the name.
+                    // The unsaved buffer was closed since the entry was added.
+                    CrashLog.Write("OpenFile: NPPM_SWITCHTOFILE could not find unsaved buffer '" + path + "'");
+                    System.Windows.Forms.MessageBox.Show(
+                        "The unsaved document '" + path + "' is no longer open in Notepad++.\n\n" +
+                        "Its data was lost when it was closed without saving. You can remove this entry via the context menu.",
+                        "Virtual Tab Groups",
+                        System.Windows.Forms.MessageBoxButtons.OK,
+                        System.Windows.Forms.MessageBoxIcon.Information);
+                }
             }
             finally { Marshal.FreeHGlobal(pathPtr); }
+        }
+
+        /// <summary>
+        /// Walks the tree and removes FileNode entries with non-rooted paths.
+        /// These are stale references to unsaved Notepad++ buffers from a prior session —
+        /// the buffer data didn't survive Notepad++ closing, so the references are dead.
+        /// Folders are kept regardless of contents (an empty folder is still meaningful).
+        /// </summary>
+        private static int PurgeUnsavedEntries(FolderNode folder)
+        {
+            if (folder == null) return 0;
+            int purged = 0;
+            for (int i = folder.Children.Count - 1; i >= 0; i--)
+            {
+                var child = folder.Children[i];
+                if (child is FileNode file && !System.IO.Path.IsPathRooted(file.Path))
+                {
+                    folder.Children.RemoveAt(i);
+                    purged++;
+                }
+                else if (child is FolderNode sub)
+                {
+                    purged += PurgeUnsavedEntries(sub);
+                }
+            }
+            return purged;
         }
 
         private static void OnFileClosed(IntPtr bufferId)

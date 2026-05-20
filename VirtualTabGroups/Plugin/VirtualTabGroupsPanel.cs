@@ -397,16 +397,6 @@ namespace VirtualTabGroups.Plugin
                 VirtualTabGroups.Plugin.CrashLog.Write("OnAddActive: GetCurrentFullPath returned '" + (path ?? "<null>") + "'");
                 if (string.IsNullOrEmpty(path)) return;
 
-                if (!System.IO.Path.IsPathRooted(path))
-                {
-                    VirtualTabGroups.Plugin.CrashLog.Write("OnAddActive: refused unsaved buffer '" + path + "'");
-                    MessageBox.Show(
-                        "This document hasn't been saved yet, so it has no file path to track.\n\nSave the file first, then add it to a virtual folder.",
-                        "Virtual Tab Groups",
-                        MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    return;
-                }
-
                 var added = TreeMutator.AddFile(targetFolder, path);
                 VirtualTabGroups.Plugin.CrashLog.Write("OnAddActive: AddFile returned " + (added != null ? added.Name : "<null>"));
                 if (added == null) return;
@@ -440,8 +430,8 @@ namespace VirtualTabGroups.Plugin
 
                 foreach (var path in paths)
                 {
-                    if (string.IsNullOrEmpty(path) || !System.IO.Path.IsPathRooted(path))
-                        continue;  // skip unsaved buffers (Notepad++ returns names like "new 40")
+                    if (string.IsNullOrEmpty(path))
+                        continue;
 
                     var added = TreeMutator.AddFile(targetFolder, path);
                     if (added == null) continue;
