@@ -16,6 +16,14 @@ namespace VirtualTabGroups.Plugin.Npp
         NPPN_LANGCHANGED = NPPN_FIRST + 11,
         NPPN_WORDSTYLESUPDATED = NPPN_FIRST + 12,
         NPPN_SHORTCUTREMAPPED = NPPN_FIRST + 13,
+        // Fires when Notepad++ has decided to shut down but BEFORE per-file
+        // close notifications start. Use it to suppress per-file cleanup that
+        // would otherwise strip every open document out of the virtual tree
+        // (since each open buffer closes during the shutdown sequence).
+        NPPN_BEFORESHUTDOWN = NPPN_FIRST + 19,
+        // Fires if the user backs out of shutdown (e.g., they hit Cancel on the
+        // "Save dirty files?" dialog). Used to clear the shutdown flag.
+        NPPN_CANCELSHUTDOWN = NPPN_FIRST + 20,
         NPPN_DARKMODECHANGED = NPPN_FIRST + 27,
     }
 }

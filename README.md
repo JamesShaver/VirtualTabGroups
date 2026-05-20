@@ -43,12 +43,15 @@ The panel is **purely virtual**. It does not scan your disk, mirror folders, or 
 - **Rename** — `F2` or context menu, edits the *display label* only; the actual file on disk is never renamed.
 - **Remove** — removes the entry from the panel; **does not delete the file on disk**. Folder removals prompt for confirmation when non-empty.
 - **Open / activate** — double-click a file (or press `Enter` on it) to switch to its tab in Notepad++. If the file isn't currently open, it's reopened from disk. If it was an unsaved scratch buffer that's since been closed, you get a friendly "buffer no longer open" message instead of trying to create a file at a path that doesn't exist.
+- **Reveal in Explorer** — right-click a file → opens Windows Explorer at the file's parent folder with the file highlighted. Disabled for unsaved buffers (nothing to reveal).
+- **Copy full path** — right-click a file → puts the file's absolute path on the clipboard. Disabled for unsaved buffers.
 - **Expand All / Collapse All** — context menu actions for any folder, applies recursively to its subtree.
 
 ### Persistence
 - **State survives restarts.** Your virtual tree (folders, files, expanded state, last selection) is saved to a JSON file in Notepad++'s plugin config directory and loaded again on next launch.
-- **Auto-removal when files close.** Closing a file via Notepad++'s tab `X` removes it from any virtual folder it was in. Saves you from accumulating stale references.
-- **Unsaved buffers are session-only.** You can absolutely add `new 17` or any other unsaved scratch buffer to a folder — useful for organizing work-in-progress alongside saved files. On Notepad++ restart, references to unsaved buffers are silently cleaned up (their data didn't survive shutdown, so the references would be dead anyway).
+- **Panel visibility survives restarts.** If the panel was open when you closed Notepad++, it reopens automatically next launch — same way the built-in docked panels behave. No need to bring it up from the Plugins menu every session. The panel registers itself with Notepad++'s docking manager early enough that the saved layout from `dockingMgr.xml` applies cleanly.
+- **Auto-removal when files close.** Closing a file via Notepad++'s tab `X` removes it from any virtual folder it was in. Saves you from accumulating stale references. The auto-removal is suspended during Notepad++ shutdown so the per-tab close notifications don't strip everything that was open at exit time.
+- **Unsaved buffers can persist across sessions.** Add `new 17` or any other unsaved scratch buffer to a folder — useful for organizing work-in-progress alongside saved files. If Notepad++'s session backup is enabled (*Settings → Preferences → Backup → "Remember current session for next launch"*), the buffer comes back on relaunch with the same name and your virtual entry stays valid. With session backup off, the buffer is gone after shutdown and the dead reference is silently cleaned up on the next launch — saved-file entries are unaffected either way.
 - **Corrupt-state recovery.** If something hand-edits or corrupts the state file, the plugin backs it up to `state.json.corrupt-yyyyMMdd-HHmmssZ-<random>` and starts with a clean tree rather than crashing. A dialog tells you where the backup landed.
 - **Future-version safety.** If a future version of the plugin writes a newer schema, an older plugin reading that file enters read-only mode for the session rather than overwriting newer data.
 
@@ -199,7 +202,7 @@ For `x86` or `ARM64`, swap the `/p:Platform=` value.
 ### Running tests
 
 ```powershell
-dotnet test VirtualTabGroups.Tests\VirtualTabGroups.Tests.csproj --nologo
+dotnet test tests\VirtualTabGroups.Tests\VirtualTabGroups.Tests.csproj --nologo
 ```
 
 The test project covers the model layer (StateStore, TreeMutator, NodeJsonConverter, AliasResolver, theme manager, observer) — 54 unit tests at the time of writing. UI behavior is verified manually inside Notepad++ since WinForms doesn't lend itself to automated testing without a real message loop.
@@ -240,6 +243,10 @@ The codebase is split into:
 
 The model layer (`Core/`) is fully unit-tested without any Notepad++ instance. The UI layer (`Plugin/`) is exercised through manual smoke testing.
 
+### The `tests/` directory
+
+`tests/VirtualTabGroups.Tests/` is a separate xUnit project that covers everything under `Core/` plus the testable seams in `Plugin/` (the observer dedup logic, the theme manager). It is **never shipped** — the release zip contains only `VirtualTabGroups.dll` and `Newtonsoft.Json.dll`. The test project exists for CI (every PR and push to `main` runs `dotnet test`) and for refactoring safety. See [CONTRIBUTING.md](CONTRIBUTING.md) for a detailed breakdown of what's covered.
+
 ---
 
 ## Roadmap
@@ -247,10 +254,9 @@ The model layer (`Core/`) is fully unit-tested without any Notepad++ instance. T
 These would all fit naturally with what the plugin already does. None are committed — but each one would slot in cleanly.
 
 ### Likely-soon
-- **"Reveal in Explorer"** in the file context menu — opens an Explorer window with the file selected.
-- **"Copy full path"** in the file context menu.
 - **Search / filter box** above the tree to quickly find a file in a large workspace.
-- **Customizable keybindings** — currently the menu shortcuts are baked in.
+- **Customizable keybindings** — currently the menu shortcuts are baked in. (Note: the *Show panel* shortcut `Ctrl+Shift+T` is already rebindable via *Notepad++ → Settings → Shortcut Mapper → Plugin commands*. This roadmap item is specifically about the in-panel shortcuts: `F2`, `Delete`, `Ctrl+N`, etc.)
+- **`Ctrl+C` to copy the selected file's path** without opening the context menu.
 
 ### Bigger ideas
 - **Multiple workspaces.** A dropdown above the tree to switch between, say, "Work project A", "Personal scripts", "Documentation cleanup" — each with its own root tree, saved to its own state file. Useful when you context-switch between unrelated projects.
@@ -282,6 +288,10 @@ If you're interested in any of these, an issue or PR is welcome — see [Contrib
 ### "Plugin is not compatible" error on launch
 - The most common cause is deploying a Debug build (links against `VCRUNTIME140D.dll`, a non-redistributable). Always deploy from `bin\Release\x64\`, not `bin\Debug\`.
 
+### Notepad++ takes two clicks to relaunch after closing
+- Not caused by this plugin. If you have several unsaved scratch buffers open at shutdown with session backup enabled, Notepad++ writes each one to `%appdata%\Notepad++\backup\` before the process actually exits, holding its single-instance mutex for a few extra seconds. Clicking the Notepad++ icon during that window is bounced to the dying process (invisibly) and does nothing — a second click after the process is fully gone launches a fresh instance normally.
+- Confirmed with `plugin.log`: our shutdown disposal completes in ~30 ms, and the gap before the next launch is entirely Notepad++-side. Closing unused scratch buffers before quitting (or disabling session backup if you don't need it) shortens the gap.
+
 ### Things break in unexpected ways
 - Open `%appdata%\Notepad++\plugins\config\VirtualTabGroups\plugin.log`. The plugin logs every notable event (startup, dialogs, exceptions with stack traces, breadcrumbs through user actions). Most issues are visible in one read.
 - If you file an issue, attaching the relevant section of `plugin.log` makes a fix dramatically faster.
@@ -297,9 +307,7 @@ If you're interested in any of these, an issue or PR is welcome — see [Contrib
 
 Bug reports, feature requests, and PRs are all welcome via [GitHub Issues](https://github.com/JamesShaver/VirtualTabGroups/issues).
 
-When filing a bug, including the contents of `plugin.log` (or the relevant lines near the failure) helps enormously.
-
-For PRs, please run `dotnet test` locally before opening — the test suite is fast (~1 second) and catches most regressions in the model layer.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the project structure, build steps, and details on what the test project covers vs. what gets manual smoke-tested. When filing a bug, including the contents of `plugin.log` (or the relevant lines near the failure) helps enormously.
 
 ---
 

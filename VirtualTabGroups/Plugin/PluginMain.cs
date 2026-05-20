@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -50,6 +52,12 @@ namespace VirtualTabGroups.Plugin
         // to the HICON after RegisterAsDockedPanel returns.
         private static System.Drawing.Icon _tabIcon;
         private static IntPtr _tabIconHandle = IntPtr.Zero;
+
+        // Set when Notepad++ signals it's about to shut down. Used to suppress per-file
+        // auto-removal during shutdown, since every open buffer fires NPPN_FILEBEFORECLOSE
+        // as Notepad++ closes them — without this guard, those notifications would strip
+        // every currently-open document out of the user's saved virtual tree.
+        private static bool _isShuttingDown;
 
         // ---- Notepad++ unmanaged entry points ----
 
@@ -165,6 +173,21 @@ namespace VirtualTabGroups.Plugin
                         Theme?.RefreshColors();
                         break;
 
+                    case NppNotif.NPPN_BEFORESHUTDOWN:
+                        // Notepad++ is about to start closing buffers. Block auto-removal
+                        // so the per-file close notifications that follow don't strip the
+                        // user's open documents out of the virtual tree before we save.
+                        _isShuttingDown = true;
+                        CrashLog.Write("beNotified: NPPN_BEFORESHUTDOWN — auto-removal suspended");
+                        break;
+
+                    case NppNotif.NPPN_CANCELSHUTDOWN:
+                        // User backed out of shutdown (e.g., Cancel on "Save dirty files?").
+                        // Restore normal auto-removal behavior.
+                        _isShuttingDown = false;
+                        CrashLog.Write("beNotified: NPPN_CANCELSHUTDOWN — auto-removal restored");
+                        break;
+
                     case NppNotif.NPPN_SHUTDOWN:
                         OnNppShutdown();
                         break;
@@ -201,21 +224,72 @@ namespace VirtualTabGroups.Plugin
             if (_stateStore == null) return;
             _root = _stateStore.Load();
 
-            int purgedStale = PurgeUnsavedEntries(_root);
+            // Smart purge: drop only the unsaved-buffer entries whose buffer didn't survive
+            // the restart. Entries that match a currently-open unsaved buffer (Notepad++
+            // session-backup case) are preserved so the user's curated tree stays intact.
+            var openPaths = GetAllOpenFilePaths() ?? Array.Empty<string>();
+            var liveBufferNames = new HashSet<string>(openPaths.Where(p => p != null), StringComparer.OrdinalIgnoreCase);
+            int purgedStale = PurgeDeadUnsavedEntries(_root, liveBufferNames);
             if (purgedStale > 0)
             {
-                CrashLog.Write("OnNppReady: purged " + purgedStale + " stale unsaved-buffer entry(ies)");
+                CrashLog.Write("OnNppReady: smart-purge removed " + purgedStale + " dead unsaved entry(ies); "
+                    + liveBufferNames.Count + " live buffer(s)");
                 _stateStore.MarkDirty(_root, _stateStore.LastSelectedId);
             }
 
             Theme = new ThemeManager(new Win32NppMessageSender(_nppData._nppHandle));
             Theme.Initialize();
+
+            // Eagerly create and register the panel so Notepad++'s docking manager
+            // can restore its last-session visibility from dockingMgr.xml. If we wait
+            // until the user clicks the menu (lazy create), Notepad++ has already
+            // finished applying its saved layout by then and our panel can never
+            // be visible at startup.
+            EnsurePanelRegistered();
         }
 
         private static void OnNppShutdown()
         {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            CrashLog.Write("OnNppShutdown: entered");
+
             try { _stateStore?.Flush(); }
-            finally { _stateStore?.Dispose(); }
+            catch (Exception ex) { CrashLog.Write("OnNppShutdown: state flush failed - " + ex.Message); }
+            finally
+            {
+                try { _stateStore?.Dispose(); }
+                catch (Exception ex) { CrashLog.Write("OnNppShutdown: state dispose failed - " + ex.Message); }
+            }
+
+            // Without explicit Dispose, the panel's owned resources (ToolTip's hidden window,
+            // cached GDI brushes/pens, the embedded TreeView) get finalized off-thread once
+            // Notepad++ tears its window tree down. Finalization can hold the process alive
+            // long enough that a quick re-launch of notepad++.exe sees the dying instance and
+            // does nothing — making the user click again. Dispose synchronously here.
+            try
+            {
+                if (_panel != null && !_panel.IsDisposed)
+                {
+                    _panel.Dispose();
+                }
+            }
+            catch (Exception ex) { CrashLog.Write("OnNppShutdown: panel dispose failed - " + ex.Message); }
+            finally { _panel = null; }
+
+            // Release the 16x16 tab icon. The HICON is owned by the managed Icon, so
+            // disposing the Icon releases the GDI handle (no separate DestroyIcon needed).
+            try
+            {
+                _tabIcon?.Dispose();
+            }
+            catch (Exception ex) { CrashLog.Write("OnNppShutdown: icon dispose failed - " + ex.Message); }
+            finally
+            {
+                _tabIcon = null;
+                _tabIconHandle = IntPtr.Zero;
+            }
+
+            CrashLog.Write("OnNppShutdown: complete in " + sw.ElapsedMilliseconds + "ms");
         }
 
         // ---- Helpers ----
@@ -327,50 +401,67 @@ namespace VirtualTabGroups.Plugin
             }
         }
 
-        private static void OnShowPanel()
+        /// <summary>
+        /// Loads the 16x16 panel-tab icon from the embedded resource once.
+        /// </summary>
+        private static void LoadTabIconOnce()
         {
-            // Load the 16x16 tab icon from our embedded plugin.ico.
-            // Held in a static field so the HICON stays valid for the panel lifetime.
-            if (_tabIconHandle == IntPtr.Zero)
+            if (_tabIconHandle != IntPtr.Zero) return;
+            try
             {
-                try
+                using (var stream = typeof(PluginMain).Assembly.GetManifestResourceStream(
+                    "VirtualTabGroups.Plugin.Resources.plugin.ico"))
                 {
-                    using (var stream = typeof(PluginMain).Assembly.GetManifestResourceStream(
-                        "VirtualTabGroups.Plugin.Resources.plugin.ico"))
+                    if (stream != null)
                     {
-                        if (stream != null)
-                        {
-                            // Pick the 16x16 frame from the multi-resolution .ico.
-                            _tabIcon = new System.Drawing.Icon(stream, new System.Drawing.Size(16, 16));
-                            _tabIconHandle = _tabIcon.Handle;
-                        }
+                        _tabIcon = new System.Drawing.Icon(stream, new System.Drawing.Size(16, 16));
+                        _tabIconHandle = _tabIcon.Handle;
                     }
                 }
-                catch { /* missing icon resource is non-fatal */ }
             }
+            catch { /* missing icon resource is non-fatal */ }
+        }
 
-            if (_panel == null)
-            {
-                _panel = new VirtualTabGroupsPanel();
-                _panel.Show();
-                _panel.AttachTheme(Theme);
+        /// <summary>
+        /// Creates the panel form and registers it as a docked panel with Notepad++.
+        /// Idempotent — subsequent calls are no-ops. Called eagerly from OnNppReady so
+        /// Notepad++'s docking manager can restore the panel's last-session visibility
+        /// before the user even sees the editor window.
+        /// </summary>
+        private static void EnsurePanelRegistered()
+        {
+            if (_panel != null) return;
 
-                _panel.RegisterAsDockedPanel(
-                    nppHandle: _nppData._nppHandle,
-                    moduleName: "VirtualTabGroups",
-                    caption: PluginName,
-                    cmdId: CmdId_ShowPanel,
-                    dockingFlags: NppTbMsg.DWS_DF_CONT_LEFT | NppTbMsg.DWS_ICONTAB,
-                    iconHandle: _tabIconHandle);
+            LoadTabIconOnce();
 
-                Win32.SendMessage(_nppData._nppHandle,
-                    (int)NppMsg.NPPM_DARKMODESUBCLASSANDTHEME,
-                    new IntPtr(1),
-                    _panel.Handle);
+            _panel = new VirtualTabGroupsPanel();
+            // Force handle creation without making the form visible — Notepad++'s
+            // docking manager applies visibility from its saved layout right after
+            // we register, so an explicit Show() here would just cause a brief flash.
+            var _ = _panel.Handle;
+            _panel.AttachTheme(Theme);
 
-                _panel.BindRoot(_root, _stateStore, _stateStore.LastSelectedId);
-                return;
-            }
+            _panel.RegisterAsDockedPanel(
+                nppHandle: _nppData._nppHandle,
+                moduleName: "VirtualTabGroups",
+                caption: PluginName,
+                cmdId: CmdId_ShowPanel,
+                dockingFlags: NppTbMsg.DWS_DF_CONT_LEFT | NppTbMsg.DWS_ICONTAB,
+                iconHandle: _tabIconHandle);
+
+            Win32.SendMessage(_nppData._nppHandle,
+                (int)NppMsg.NPPM_DARKMODESUBCLASSANDTHEME,
+                new IntPtr(1),
+                _panel.Handle);
+
+            _panel.BindRoot(_root, _stateStore, _stateStore.LastSelectedId);
+        }
+
+        private static void OnShowPanel()
+        {
+            // Defensive: NPPN_READY normally runs before the user can click any menu item,
+            // but if something goes wrong, lazy-create the panel here as a fallback.
+            EnsurePanelRegistered();
 
             if (_panel.Visible)
                 _panel.HideDocked(_nppData._nppHandle);
@@ -459,26 +550,30 @@ namespace VirtualTabGroups.Plugin
         }
 
         /// <summary>
-        /// Walks the tree and removes FileNode entries with non-rooted paths.
-        /// These are stale references to unsaved Notepad++ buffers from a prior session —
-        /// the buffer data didn't survive Notepad++ closing, so the references are dead.
-        /// Folders are kept regardless of contents (an empty folder is still meaningful).
+        /// Walks the tree and removes unsaved-buffer FileNode entries (non-rooted paths)
+        /// whose buffer is no longer present in Notepad++. If Notepad++'s session-backup
+        /// feature is enabled, unsaved buffers like "new 32" survive a restart with the
+        /// same name and the entry stays valid — we keep those. Saved files (rooted
+        /// paths) are always kept regardless of whether they're currently open.
+        /// Folders are kept regardless of contents.
         /// </summary>
-        private static int PurgeUnsavedEntries(FolderNode folder)
+        private static int PurgeDeadUnsavedEntries(FolderNode folder, HashSet<string> liveBufferNames)
         {
             if (folder == null) return 0;
             int purged = 0;
             for (int i = folder.Children.Count - 1; i >= 0; i--)
             {
                 var child = folder.Children[i];
-                if (child is FileNode file && !System.IO.Path.IsPathRooted(file.Path))
+                if (child is FileNode file
+                    && !System.IO.Path.IsPathRooted(file.Path)
+                    && !liveBufferNames.Contains(file.Path))
                 {
                     folder.Children.RemoveAt(i);
                     purged++;
                 }
                 else if (child is FolderNode sub)
                 {
-                    purged += PurgeUnsavedEntries(sub);
+                    purged += PurgeDeadUnsavedEntries(sub, liveBufferNames);
                 }
             }
             return purged;
@@ -487,6 +582,14 @@ namespace VirtualTabGroups.Plugin
         private static void OnFileClosed(IntPtr bufferId)
         {
             CrashLog.Write("OnFileClosed: entered, bufferId=" + bufferId.ToInt64().ToString("X"));
+            if (_isShuttingDown)
+            {
+                // Notepad++ closes every open buffer as part of shutdown. Removing each
+                // one here would silently delete the user's entire open document set from
+                // the virtual tree before we save state. Skip the cleanup entirely.
+                CrashLog.Write("OnFileClosed: bailout - shutdown in progress, preserving tree");
+                return;
+            }
             if (_root == null || _stateStore == null)
             {
                 CrashLog.Write("OnFileClosed: bailout - _root or _stateStore null");

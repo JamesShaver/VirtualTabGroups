@@ -27,4 +27,4 @@ jobs:
         run: msbuild VirtualTabGroups.sln /p:Configuration=Debug /p:Platform=x64
 
       - name: Run tests
-        run: dotnet test VirtualTabGroups.Tests/VirtualTabGroups.Tests.csproj --nologo --no-build
+        run: dotnet test tests/VirtualTabGroups.Tests/VirtualTabGroups.Tests.csproj --nologo --no-build
