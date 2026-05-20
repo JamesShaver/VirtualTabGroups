@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Linq;
 using System.Windows.Forms;
 using VirtualTabGroups.Core;
 using VirtualTabGroups.Plugin.Npp;
@@ -24,6 +25,12 @@ namespace VirtualTabGroups.Plugin
         // Drag-drop: auto-scroll state.
         private readonly Timer _scrollTimer = new Timer { Interval = 100 };
         private int _scrollDirection;
+
+        // Multi-selection set, populated by Ctrl/Shift+click. The set is in addition
+        // to WinForms' single SelectedNode (which we treat as the "anchor").
+        private readonly System.Collections.Generic.HashSet<TreeNode> _multiSelection
+            = new System.Collections.Generic.HashSet<TreeNode>();
+        private TreeNode _selectionAnchor;
 
         public DarkAwareTreeView Tree => _tree;
 
@@ -60,6 +67,7 @@ namespace VirtualTabGroups.Plugin
             // for a follow-up double-click. ToolTip windows are TOPMOST and can
             // briefly intercept clicks before they auto-dismiss.
             _tree.MouseDown += (s, ev) => { try { _tooltip?.Hide(_tree); } catch { } };
+            _tree.MouseDown += Tree_MouseDownMultiSelect;
         }
 
         public VirtualTabGroupsPanel()
@@ -70,6 +78,7 @@ namespace VirtualTabGroups.Plugin
             StartPosition = FormStartPosition.Manual;
 
             _tree = new DarkAwareTreeView { Dock = DockStyle.Fill };
+            _tree.IsExtraSelected = node => _multiSelection.Contains(node);
             _tree.EmptyStateText = "Right-click here to add open files";
             _tree.ImageList = _icons.Images;
             _tree.ImageIndex = _icons.FolderClosedIndex;
@@ -103,7 +112,21 @@ namespace VirtualTabGroups.Plugin
             {
                 try
                 {
-                    if (ev.Item is TreeNode tn) _tree.DoDragDrop(tn, DragDropEffects.Move);
+                    if (!(ev.Item is TreeNode source)) return;
+
+                    TreeNode[] payload;
+                    if (_multiSelection.Contains(source) && _multiSelection.Count > 1)
+                    {
+                        // Drag the entire multi-selection set, ordered by their position
+                        // in the visible tree so insertion order is stable.
+                        payload = OrderByVisiblePosition(_multiSelection).ToArray();
+                    }
+                    else
+                    {
+                        payload = new[] { source };
+                    }
+
+                    _tree.DoDragDrop(payload, DragDropEffects.Move);
                 }
                 catch (Exception ex) { ReportError("Drag start", ex); }
             };
@@ -111,7 +134,7 @@ namespace VirtualTabGroups.Plugin
             {
                 try
                 {
-                    ev.Effect = ev.Data.GetDataPresent(typeof(TreeNode))
+                    ev.Effect = ev.Data.GetDataPresent(typeof(TreeNode[]))
                         ? DragDropEffects.Move
                         : DragDropEffects.None;
                 }
@@ -163,6 +186,12 @@ namespace VirtualTabGroups.Plugin
             _root = root;
             _stateStore = stateStore;
             _currentSelectedId = lastSelected;
+
+            // All WinForms TreeNode references are invalidated by the Nodes.Clear()
+            // below. Drop them from the multi-selection set now so paint callbacks
+            // and drag-start checks never see stale pointers.
+            _multiSelection.Clear();
+            _selectionAnchor = null;
 
             _tree.BeginUpdate();
             try
@@ -547,6 +576,102 @@ namespace VirtualTabGroups.Plugin
         }
 
         // ──────────────────────────────────────────────
+        // Multi-selection support (Task 48)
+        // ──────────────────────────────────────────────
+
+        private void Tree_MouseDownMultiSelect(object sender, MouseEventArgs e)
+        {
+            try
+            {
+                if (e.Button != MouseButtons.Left) return;
+                var hit = _tree.HitTest(e.X, e.Y);
+                if (hit.Node == null) return;
+
+                bool ctrl  = (Control.ModifierKeys & Keys.Control) != 0;
+                bool shift = (Control.ModifierKeys & Keys.Shift)   != 0;
+
+                if (ctrl && !shift)
+                {
+                    // Toggle membership of the clicked node.
+                    if (_multiSelection.Contains(hit.Node))
+                        _multiSelection.Remove(hit.Node);
+                    else
+                        _multiSelection.Add(hit.Node);
+                    _selectionAnchor = hit.Node;
+                }
+                else if (shift && !ctrl && _selectionAnchor != null)
+                {
+                    // Replace the multi-selection with all visible nodes between
+                    // the current anchor and the clicked node, inclusive.
+                    _multiSelection.Clear();
+                    foreach (var rn in VisibleNodesBetween(_selectionAnchor, hit.Node))
+                        _multiSelection.Add(rn);
+                    // Note: we do NOT update _selectionAnchor on Shift+click so that
+                    // successive Shift+clicks all extend from the original anchor.
+                }
+                else
+                {
+                    // Plain left-click: reset to a single-node selection.
+                    _multiSelection.Clear();
+                    _multiSelection.Add(hit.Node);
+                    _selectionAnchor = hit.Node;
+                }
+
+                _tree.Invalidate();
+            }
+            catch (Exception ex) { ReportError("MouseDown multi-select", ex); }
+        }
+
+        /// <summary>
+        /// Returns all visible nodes between <paramref name="a"/> and <paramref name="b"/>
+        /// inclusive, walking NextVisibleNode to honour the user's expanded/collapsed state.
+        /// Works regardless of which node appears earlier in the visible order.
+        /// </summary>
+        private System.Collections.Generic.IEnumerable<TreeNode> VisibleNodesBetween(TreeNode a, TreeNode b)
+        {
+            // Walk forward from a; if we find b, a is above b.
+            for (var cur = a; cur != null; cur = cur.NextVisibleNode)
+            {
+                if (cur == b)
+                {
+                    // a is the top node.
+                    for (var n = a; n != null; n = n.NextVisibleNode)
+                    {
+                        yield return n;
+                        if (n == b) yield break;
+                    }
+                    yield break;
+                }
+            }
+
+            // b is above a — walk from b down to a.
+            for (var n = b; n != null; n = n.NextVisibleNode)
+            {
+                yield return n;
+                if (n == a) yield break;
+            }
+        }
+
+        /// <summary>
+        /// Returns <paramref name="nodes"/> ordered by their position in the visible tree
+        /// (top-to-bottom). Uses a single forward pass with a HashSet for O(n) membership
+        /// tests, where n is the total visible node count.
+        /// </summary>
+        private System.Collections.Generic.IEnumerable<TreeNode> OrderByVisiblePosition(
+            System.Collections.Generic.IEnumerable<TreeNode> nodes)
+        {
+            var set     = new System.Collections.Generic.HashSet<TreeNode>(nodes);
+            var ordered = new System.Collections.Generic.List<TreeNode>(set.Count);
+
+            var first = _tree.Nodes.Count > 0 ? _tree.Nodes[0] : null;
+            for (var cur = first; cur != null; cur = cur.NextVisibleNode)
+            {
+                if (set.Contains(cur)) ordered.Add(cur);
+            }
+            return ordered;
+        }
+
+        // ──────────────────────────────────────────────
         // Drag-and-drop support (Tasks 32–34)
         // ──────────────────────────────────────────────
 
@@ -566,22 +691,40 @@ namespace VirtualTabGroups.Plugin
         {
             try
             {
-                if (!e.Data.GetDataPresent(typeof(TreeNode))) { e.Effect = DragDropEffects.None; return; }
+                if (!e.Data.GetDataPresent(typeof(TreeNode[])))
+                {
+                    e.Effect = DragDropEffects.None;
+                    return;
+                }
 
                 var clientPoint = _tree.PointToClient(new Point(e.X, e.Y));
                 var target = _tree.GetNodeAt(clientPoint);
 
-                var dragged = (TreeNode)e.Data.GetData(typeof(TreeNode));
+                var draggedSet = (TreeNode[])e.Data.GetData(typeof(TreeNode[]));
 
-                // Cyclic-drop guard.
-                if (target != null && dragged.Tag is FolderNode draggedFolder && target.Tag is TreeNodeModel targetModel)
+                if (target != null)
                 {
-                    if (target == dragged) { e.Effect = DragDropEffects.None; _hoverTimer.Stop(); return; }
-                    if (TreeMutator.FindContainer(draggedFolder, targetModel) != null)
+                    // Cyclic guard: check every dragged node against the target.
+                    foreach (var dragged in draggedSet)
                     {
-                        e.Effect = DragDropEffects.None;
-                        _hoverTimer.Stop();
-                        return;
+                        if (dragged == target)
+                        {
+                            e.Effect = DragDropEffects.None;
+                            _hoverTimer.Stop();
+                            _scrollTimer.Stop();
+                            _tree.ClearInsertionLine();
+                            return;
+                        }
+                        if (dragged.Tag is FolderNode draggedFolder
+                            && target.Tag is TreeNodeModel targetModel
+                            && TreeMutator.FindContainer(draggedFolder, targetModel) != null)
+                        {
+                            e.Effect = DragDropEffects.None;
+                            _hoverTimer.Stop();
+                            _scrollTimer.Stop();
+                            _tree.ClearInsertionLine();
+                            return;
+                        }
                     }
                 }
 
@@ -640,11 +783,9 @@ namespace VirtualTabGroups.Plugin
                 _scrollTimer.Stop();
                 _tree.ClearInsertionLine();
 
-                if (!e.Data.GetDataPresent(typeof(TreeNode))) return;
-
-                var dragged = (TreeNode)e.Data.GetData(typeof(TreeNode));
-                var draggedModel = dragged.Tag as TreeNodeModel;
-                if (draggedModel == null) return;
+                if (!e.Data.GetDataPresent(typeof(TreeNode[]))) return;
+                var draggedSet = (TreeNode[])e.Data.GetData(typeof(TreeNode[]));
+                if (draggedSet.Length == 0) return;
 
                 var clientPoint = _tree.PointToClient(new Point(e.X, e.Y));
                 var target = _tree.GetNodeAt(clientPoint);
@@ -661,7 +802,6 @@ namespace VirtualTabGroups.Plugin
                 else
                 {
                     var targetModel = (TreeNodeModel)target.Tag;
-
                     switch (position)
                     {
                         case DropPosition.Above:
@@ -680,15 +820,42 @@ namespace VirtualTabGroups.Plugin
                     }
                 }
 
-                if (!TreeMutator.MoveNode(draggedModel, destinationFolder, insertionIndex, _root))
-                    return;
+                // Move each dragged node in turn. Track moved model IDs so we can
+                // re-select them after the full tree rebuild.
+                var movedModelIds = new System.Collections.Generic.List<Guid>();
+                int currentIndex = insertionIndex;
+                foreach (var draggedTn in draggedSet)
+                {
+                    if (!(draggedTn.Tag is TreeNodeModel draggedModel)) continue;
+                    if (!TreeMutator.MoveNode(draggedModel, destinationFolder, currentIndex, _root))
+                        continue;
+                    movedModelIds.Add(draggedModel.Id);
+                    currentIndex++;
+                }
+
+                if (movedModelIds.Count == 0) return;
 
                 RefreshFromModel();
 
-                var newTn = FindByModelId(_tree.Nodes, draggedModel.Id);
-                if (newTn != null) { _tree.SelectedNode = newTn; newTn.EnsureVisible(); }
+                // Re-select all moved nodes in the rebuilt tree.
+                _multiSelection.Clear();
+                foreach (var id in movedModelIds)
+                {
+                    var newTn = FindByModelId(_tree.Nodes, id);
+                    if (newTn != null) _multiSelection.Add(newTn);
+                }
 
-                _stateStore?.MarkDirty(_root, draggedModel.Id);
+                // Set WinForms selection and anchor to the first moved node.
+                var firstTn = FindByModelId(_tree.Nodes, movedModelIds[0]);
+                if (firstTn != null)
+                {
+                    _tree.SelectedNode = firstTn;
+                    _selectionAnchor = firstTn;
+                    firstTn.EnsureVisible();
+                }
+
+                _stateStore?.MarkDirty(_root, _currentSelectedId);
+                _tree.Invalidate();
             }
             catch (Exception ex) { ReportError("Tree_DragDrop", ex); }
         }

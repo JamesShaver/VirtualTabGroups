@@ -24,6 +24,12 @@ namespace VirtualTabGroups.Plugin.UI
             set { _emptyStateText = value; Invalidate(); }
         }
 
+        /// <summary>
+        /// Optional predicate the panel sets to extend selection visuals beyond
+        /// the single WinForms SelectedNode. Used to highlight multi-selected nodes.
+        /// </summary>
+        public Func<TreeNode, bool> IsExtraSelected { get; set; }
+
         public DarkAwareTreeView()
         {
             DrawMode = TreeViewDrawMode.OwnerDrawAll;
@@ -105,7 +111,11 @@ namespace VirtualTabGroups.Plugin.UI
                 if (_theme == null) { base.OnDrawNode(e); return; }
 
                 // Fill background using cached brushes — no per-call allocation.
-                var brush = (e.State & TreeNodeStates.Selected) != 0 ? _bgHotterBrush : _bgBrush;
+                // A node is highlighted if WinForms considers it selected, OR if the
+                // panel's multi-selection predicate claims it (Ctrl/Shift+click set).
+                bool isSelected = (e.State & TreeNodeStates.Selected) != 0
+                                  || (IsExtraSelected != null && IsExtraSelected(e.Node));
+                var brush = isSelected ? _bgHotterBrush : _bgBrush;
                 e.Graphics.FillRectangle(brush, new Rectangle(0, e.Bounds.Top, Width, e.Bounds.Height));
 
                 int indent = e.Node.Level * Indent + 2;
