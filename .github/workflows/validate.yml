@@ -26,5 +26,10 @@ jobs:
       - name: Build (Debug x64)
         run: msbuild VirtualTabGroups.sln /p:Configuration=Debug /p:Platform=x64
 
+      # The test project is SDK-style and isn't built by the MSBuild step above
+      # (the solution maps it to AnyCPU without a Build.0 entry for x64, and
+      # standalone MSBuild can't resolve Microsoft.NET.Sdk without the .NET SDK).
+      # `dotnet test` without --no-build invokes the SDK to build the test
+      # project itself, mirroring what we do locally.
       - name: Run tests
-        run: dotnet test tests/VirtualTabGroups.Tests/VirtualTabGroups.Tests.csproj --nologo --no-build
+        run: dotnet test tests/VirtualTabGroups.Tests/VirtualTabGroups.Tests.csproj --nologo
