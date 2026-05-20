@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -222,10 +223,17 @@ namespace VirtualTabGroups.Plugin
             if (_stateStore == null) return;
             _root = _stateStore.Load();
 
-            int purgedStale = PurgeUnsavedEntries(_root);
+            // Smart purge: drop only the unsaved-buffer entries whose buffer didn't survive
+            // the restart. Entries that match a currently-open unsaved buffer (Notepad++
+            // session-backup case) are preserved so the user's curated tree stays intact.
+            var liveBufferNames = new HashSet<string>(
+                GetAllOpenFilePaths() ?? Array.Empty<string>(),
+                StringComparer.OrdinalIgnoreCase);
+            int purgedStale = PurgeDeadUnsavedEntries(_root, liveBufferNames);
             if (purgedStale > 0)
             {
-                CrashLog.Write("OnNppReady: purged " + purgedStale + " stale unsaved-buffer entry(ies)");
+                CrashLog.Write("OnNppReady: purged " + purgedStale + " dead unsaved-buffer entry(ies), kept "
+                    + liveBufferNames.Count + " live buffer(s)");
                 _stateStore.MarkDirty(_root, _stateStore.LastSelectedId);
             }
 
@@ -504,26 +512,30 @@ namespace VirtualTabGroups.Plugin
         }
 
         /// <summary>
-        /// Walks the tree and removes FileNode entries with non-rooted paths.
-        /// These are stale references to unsaved Notepad++ buffers from a prior session —
-        /// the buffer data didn't survive Notepad++ closing, so the references are dead.
-        /// Folders are kept regardless of contents (an empty folder is still meaningful).
+        /// Walks the tree and removes unsaved-buffer FileNode entries (non-rooted paths)
+        /// whose buffer is no longer present in Notepad++. If Notepad++'s session-backup
+        /// feature is enabled, unsaved buffers like "new 32" survive a restart with the
+        /// same name and the entry stays valid — we keep those. Saved files (rooted
+        /// paths) are always kept regardless of whether they're currently open.
+        /// Folders are kept regardless of contents.
         /// </summary>
-        private static int PurgeUnsavedEntries(FolderNode folder)
+        private static int PurgeDeadUnsavedEntries(FolderNode folder, HashSet<string> liveBufferNames)
         {
             if (folder == null) return 0;
             int purged = 0;
             for (int i = folder.Children.Count - 1; i >= 0; i--)
             {
                 var child = folder.Children[i];
-                if (child is FileNode file && !System.IO.Path.IsPathRooted(file.Path))
+                if (child is FileNode file
+                    && !System.IO.Path.IsPathRooted(file.Path)
+                    && !liveBufferNames.Contains(file.Path))
                 {
                     folder.Children.RemoveAt(i);
                     purged++;
                 }
                 else if (child is FolderNode sub)
                 {
-                    purged += PurgeUnsavedEntries(sub);
+                    purged += PurgeDeadUnsavedEntries(sub, liveBufferNames);
                 }
             }
             return purged;
