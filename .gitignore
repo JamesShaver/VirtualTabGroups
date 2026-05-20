@@ -1,0 +1,26 @@
+# Build output
+bin/
+obj/
+
+# NuGet
+packages/
+*.nupkg
+nuget.exe
+
+# Visual Studio / Rider / VS Code
+.vs/
+.idea/
+.vscode/
+*.user
+*.suo
+
+# Test results
+TestResults/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# C++/CLI generated import libraries (regenerated at build time)
+VirtualTabGroups.Loader/mscoree.lib
+VirtualTabGroups.Loader/mscoree.exp

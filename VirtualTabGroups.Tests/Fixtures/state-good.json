@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "lastSelectedId": "99e0a4d2-4b5c-4d6e-8f70-112233445566",
+  "root": {
+    "type": "folder",
+    "id": "f1c2b3a4-0000-0000-0000-000000000001",
+    "name": "",
+    "expanded": true,
+    "children": [
+      {
+        "type": "folder",
+        "id": "a3b4c5d6-0000-0000-0000-000000000002",
+        "name": "Auth",
+        "expanded": false,
+        "children": [
+          {
+            "type": "file",
+            "id": "99e0a4d2-4b5c-4d6e-8f70-112233445566",
+            "name": "User.php",
+            "path": "C:\\src\\auth\\User.php"
+          }
+        ]
+      }
+    ]
+  }
+}
