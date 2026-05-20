@@ -346,17 +346,14 @@ namespace VirtualTabGroups.Plugin
                 ReportError("Open File", ex);
             }
         }
-        [System.Runtime.ExceptionServices.HandleProcessCorruptedStateExceptions]
-        [System.Security.SecurityCritical]
         private void OnAddActive(FolderNode targetFolder)
         {
             try
             {
                 VirtualTabGroups.Plugin.CrashLog.Write("OnAddActive: entered, targetFolder=" + (targetFolder?.Name ?? "<null>"));
-                VirtualTabGroups.Plugin.PluginMain.DiagnosticProbe();
                 if (targetFolder == null) return;
 
-                var path = PluginMain.GetCurrentFullPathManual();
+                var path = PluginMain.GetCurrentFullPath();
                 VirtualTabGroups.Plugin.CrashLog.Write("OnAddActive: GetCurrentFullPath returned '" + (path ?? "<null>") + "'");
                 if (string.IsNullOrEmpty(path)) return;
 

@@ -342,173 +342,45 @@ namespace VirtualTabGroups.Plugin
                 dlg.ShowDialog();
         }
 
-        [System.Runtime.ExceptionServices.HandleProcessCorruptedStateExceptions]
-        [System.Security.SecurityCritical]
+        /// <summary>
+        /// Returns the absolute path of Notepad++'s currently active document.
+        ///
+        /// Implementation note: this used to be <c>SendMessage(NPPM_GETFULLCURRENTPATH, ...)</c>,
+        /// but that message crashes Notepad++ in current builds (confirmed by diagnostic probe
+        /// 2026-05-19). The two-step <c>NPPM_GETCURRENTBUFFERID</c> + <c>NPPM_GETFULLPATHFROMBUFFERID</c>
+        /// path produces the same data via a different handler that is stable.
+        /// </summary>
         internal static string GetCurrentFullPath()
         {
-            CrashLog.Write("GetCurrentFullPath: 1 - entered, _nppData._nppHandle=" + _nppData._nppHandle.ToInt64().ToString("X"));
-            var sb = new StringBuilder(1024);
-            CrashLog.Write("GetCurrentFullPath: 2 - StringBuilder allocated, Capacity=" + sb.Capacity);
-            CrashLog.Write("GetCurrentFullPath: 3 - about to SendMessage NPPM_GETFULLCURRENTPATH (" + (int)NppMsg.NPPM_GETFULLCURRENTPATH + ")");
-            try
-            {
-                Win32.SendMessageStringBuilder(
-                    _nppData._nppHandle,
-                    (int)NppMsg.NPPM_GETFULLCURRENTPATH,
-                    new IntPtr(sb.Capacity),
-                    sb);
-            }
-            catch (Exception ex)
-            {
-                CrashLog.WriteException("GetCurrentFullPath SendMessage", ex);
-                throw;
-            }
-            CrashLog.Write("GetCurrentFullPath: 4 - SendMessage returned");
-            var result = sb.ToString();
-            CrashLog.Write("GetCurrentFullPath: 5 - sb.ToString='" + result + "' (length=" + result.Length + ")");
-            return result;
-        }
+            IntPtr bufferId = Win32.SendMessage(
+                _nppData._nppHandle,
+                (int)NppMsg.NPPM_GETCURRENTBUFFERID,
+                IntPtr.Zero,
+                IntPtr.Zero);
 
-        [System.Runtime.ExceptionServices.HandleProcessCorruptedStateExceptions]
-        [System.Security.SecurityCritical]
-        internal static string GetCurrentFullPathManual()
-        {
-            CrashLog.Write("GetCurrentFullPathManual: 1 - entered, _nppData._nppHandle=" + _nppData._nppHandle.ToInt64().ToString("X"));
-            const int bufSize = 260;  // MAX_PATH — matches what other Notepad++ plugins use
-            IntPtr buffer = Marshal.AllocHGlobal(bufSize * 2);  // 2 bytes per wchar
-            CrashLog.Write("GetCurrentFullPathManual: 2 - buffer allocated at " + buffer.ToInt64().ToString("X") + ", size=" + (bufSize * 2) + " bytes");
-            try
-            {
-                // Zero the buffer to detect partial writes
-                for (int i = 0; i < bufSize * 2; i++) Marshal.WriteByte(buffer, i, 0);
-                CrashLog.Write("GetCurrentFullPathManual: 3 - buffer zeroed");
+            if (bufferId == IntPtr.Zero) return string.Empty;
 
-                CrashLog.Write("GetCurrentFullPathManual: 4 - about to SendMessage NPPM_GETFULLCURRENTPATH (" + (int)NppMsg.NPPM_GETFULLCURRENTPATH + ")");
-                IntPtr result;
-                try
-                {
-                    result = Win32.SendMessage(
-                        _nppData._nppHandle,
-                        (int)NppMsg.NPPM_GETFULLCURRENTPATH,
-                        new IntPtr(bufSize),
-                        buffer);
-                }
-                catch (Exception ex)
-                {
-                    CrashLog.WriteException("GetCurrentFullPathManual SendMessage", ex);
-                    throw;
-                }
-                CrashLog.Write("GetCurrentFullPathManual: 5 - SendMessage returned " + result.ToInt64());
-
-                var str = Marshal.PtrToStringUni(buffer);
-                CrashLog.Write("GetCurrentFullPathManual: 6 - PtrToStringUni='" + (str ?? "<null>") + "'");
-                return str ?? string.Empty;
-            }
-            finally
-            {
-                Marshal.FreeHGlobal(buffer);
-                CrashLog.Write("GetCurrentFullPathManual: 7 - buffer freed");
-            }
-        }
-
-        [System.Runtime.ExceptionServices.HandleProcessCorruptedStateExceptions]
-        [System.Security.SecurityCritical]
-        internal static void DiagnosticProbe()
-        {
-            CrashLog.Write("DiagnosticProbe: START");
-
-            // Test 1: a no-buffer message that just returns an integer
-            try
-            {
-                CrashLog.Write("DiagnosticProbe: about to send NPPM_GETNBOPENFILES");
-                IntPtr count = Win32.SendMessage(
-                    _nppData._nppHandle,
-                    (int)NppMsg.NPPM_GETNBOPENFILES,
-                    IntPtr.Zero,
-                    IntPtr.Zero);
-                CrashLog.Write("DiagnosticProbe: NPPM_GETNBOPENFILES returned " + count.ToInt64());
-            }
-            catch (Exception ex) { CrashLog.WriteException("DiagnosticProbe NPPM_GETNBOPENFILES", ex); }
-
-            // Test 2: get the current buffer ID — also no buffer marshaling
-            try
-            {
-                CrashLog.Write("DiagnosticProbe: about to send NPPM_GETCURRENTBUFFERID");
-                IntPtr bufferId = Win32.SendMessage(
-                    _nppData._nppHandle,
-                    (int)NppMsg.NPPM_GETCURRENTBUFFERID,
-                    IntPtr.Zero,
-                    IntPtr.Zero);
-                CrashLog.Write("DiagnosticProbe: NPPM_GETCURRENTBUFFERID returned " + bufferId.ToInt64().ToString("X"));
-            }
-            catch (Exception ex) { CrashLog.WriteException("DiagnosticProbe NPPM_GETCURRENTBUFFERID", ex); }
-
-            // Test 3: re-call NPPM_GETPLUGINSCONFIGDIR with HGlobal buffer — same message that worked in setInfo
-            try
-            {
-                CrashLog.Write("DiagnosticProbe: about to send NPPM_GETPLUGINSCONFIGDIR (HGlobal buffer)");
-                const int bufSize = 512;
-                IntPtr buffer = Marshal.AllocHGlobal(bufSize * 2);
-                try
-                {
-                    for (int i = 0; i < bufSize * 2; i++) Marshal.WriteByte(buffer, i, 0);
-                    Win32.SendMessage(
-                        _nppData._nppHandle,
-                        (int)NppMsg.NPPM_GETPLUGINSCONFIGDIR,
-                        new IntPtr(bufSize),
-                        buffer);
-                    var s = Marshal.PtrToStringUni(buffer);
-                    CrashLog.Write("DiagnosticProbe: NPPM_GETPLUGINSCONFIGDIR returned '" + (s ?? "<null>") + "'");
-                }
-                finally { Marshal.FreeHGlobal(buffer); }
-            }
-            catch (Exception ex) { CrashLog.WriteException("DiagnosticProbe NPPM_GETPLUGINSCONFIGDIR", ex); }
-
-            // Test 4: try NPPM_GETFULLPATHFROMBUFFERID with the buffer ID we got (if any).
-            // This is the same data we want, via a different message.
-            try
-            {
-                CrashLog.Write("DiagnosticProbe: about to send NPPM_GETCURRENTBUFFERID again for the path test");
-                IntPtr bufferId = Win32.SendMessage(
-                    _nppData._nppHandle,
-                    (int)NppMsg.NPPM_GETCURRENTBUFFERID,
-                    IntPtr.Zero,
-                    IntPtr.Zero);
-                CrashLog.Write("DiagnosticProbe: got bufferId=" + bufferId.ToInt64().ToString("X"));
-
-                if (bufferId != IntPtr.Zero)
-                {
-                    const int bufSize = 512;
-                    IntPtr buffer = Marshal.AllocHGlobal(bufSize * 2);
-                    try
-                    {
-                        for (int i = 0; i < bufSize * 2; i++) Marshal.WriteByte(buffer, i, 0);
-                        CrashLog.Write("DiagnosticProbe: about to send NPPM_GETFULLPATHFROMBUFFERID");
-                        Win32.SendMessage(
-                            _nppData._nppHandle,
-                            (int)NppMsg.NPPM_GETFULLPATHFROMBUFFERID,
-                            bufferId,
-                            buffer);
-                        var s = Marshal.PtrToStringUni(buffer);
-                        CrashLog.Write("DiagnosticProbe: NPPM_GETFULLPATHFROMBUFFERID returned '" + (s ?? "<null>") + "'");
-                    }
-                    finally { Marshal.FreeHGlobal(buffer); }
-                }
-            }
-            catch (Exception ex) { CrashLog.WriteException("DiagnosticProbe NPPM_GETFULLPATHFROMBUFFERID", ex); }
-
-            CrashLog.Write("DiagnosticProbe: END");
+            return GetPathForBufferId(bufferId);
         }
 
         internal static string GetPathForBufferId(IntPtr bufferId)
         {
-            var sb = new System.Text.StringBuilder(1024);
-            Win32.SendMessageStringBuilder(
-                _nppData._nppHandle,
-                (int)NppMsg.NPPM_GETFULLPATHFROMBUFFERID,
-                bufferId,
-                sb);
-            return sb.ToString();
+            const int bufSize = 512;
+            IntPtr buffer = Marshal.AllocHGlobal(bufSize * 2);
+            try
+            {
+                for (int i = 0; i < bufSize * 2; i++) Marshal.WriteByte(buffer, i, 0);
+                Win32.SendMessage(
+                    _nppData._nppHandle,
+                    (int)NppMsg.NPPM_GETFULLPATHFROMBUFFERID,
+                    bufferId,
+                    buffer);
+                return Marshal.PtrToStringUni(buffer) ?? string.Empty;
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(buffer);
+            }
         }
 
         internal static void OpenFile(string path)
