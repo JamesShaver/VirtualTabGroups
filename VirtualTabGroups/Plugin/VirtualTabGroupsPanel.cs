@@ -126,6 +126,7 @@ namespace VirtualTabGroups.Plugin
                         payload = new[] { source };
                     }
 
+                    VirtualTabGroups.Plugin.CrashLog.Write("ItemDrag: starting drag of " + payload.Length + " node(s) (multiSelection.Count=" + _multiSelection.Count + ")");
                     _tree.DoDragDrop(payload, DragDropEffects.Move);
                 }
                 catch (Exception ex) { ReportError("Drag start", ex); }
@@ -611,9 +612,17 @@ namespace VirtualTabGroups.Plugin
                 }
                 else
                 {
-                    // Plain left-click: reset to a single-node selection.
-                    _multiSelection.Clear();
-                    _multiSelection.Add(hit.Node);
+                    // Plain left-click. If the clicked node is ALREADY part of the
+                    // multi-selection, preserve the set — otherwise a drag started
+                    // from this MouseDown would have its selection wiped before the
+                    // ItemDrag event fires, so only one file would move. Matches the
+                    // file-manager convention. The set is only collapsed when the user
+                    // clicks somewhere OUTSIDE the current multi-selection.
+                    if (!_multiSelection.Contains(hit.Node))
+                    {
+                        _multiSelection.Clear();
+                        _multiSelection.Add(hit.Node);
+                    }
                     _selectionAnchor = hit.Node;
                 }
 
