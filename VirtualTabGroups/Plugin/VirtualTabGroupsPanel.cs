@@ -56,6 +56,10 @@ namespace VirtualTabGroups.Plugin
                 if (ev.Node?.Tag is FileNode f)
                     _tooltip.SetToolTip(_tree, f.Path);
             };
+            // Hide the tooltip on any mouse-down so it can't sit in the click path
+            // for a follow-up double-click. ToolTip windows are TOPMOST and can
+            // briefly intercept clicks before they auto-dismiss.
+            _tree.MouseDown += (s, ev) => { try { _tooltip?.Hide(_tree); } catch { } };
         }
 
         public VirtualTabGroupsPanel()
@@ -74,11 +78,17 @@ namespace VirtualTabGroups.Plugin
             _tree.AfterExpand += Tree_AfterExpand;
             _tree.AfterCollapse += Tree_AfterCollapse;
             _tree.AfterLabelEdit += Tree_AfterLabelEdit;
-            _tree.NodeMouseDoubleClick += (s, ev) =>
+            // Use MouseDoubleClick + HitTest instead of NodeMouseDoubleClick.
+            // NodeMouseDoubleClick only fires when the click hits WinForms' internal
+            // idea of the node label, which doesn't match where we owner-draw the text.
+            // MouseDoubleClick + HitTest(x, y) reliably resolves the clicked node
+            // regardless of how/where the row is painted.
+            _tree.MouseDoubleClick += (s, ev) =>
             {
                 try
                 {
-                    if (ev.Node?.Tag is FileNode f)
+                    var hit = _tree.HitTest(ev.X, ev.Y);
+                    if (hit.Node?.Tag is FileNode f)
                         PluginMain.OpenFile(f.Path);
                 }
                 catch (Exception ex) { ReportError("Double-click open", ex); }
