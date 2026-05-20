@@ -142,7 +142,16 @@ namespace VirtualTabGroups.Plugin
                         OnNppReady();
                         break;
 
+                    case NppNotif.NPPN_FILEBEFORECLOSE:
+                        // Fires BEFORE the buffer is destroyed, so NPPM_GETFULLPATHFROMBUFFERID
+                        // can still resolve the path. NPPN_FILECLOSED fires after destruction
+                        // and the lookup returns empty.
+                        OnFileClosed(notification.nmhdr.idFrom);
+                        break;
+
                     case NppNotif.NPPN_FILECLOSED:
+                        // Kept as a fallback for buffer IDs we somehow didn't catch in
+                        // BEFORECLOSE — best-effort, may no-op if the buffer is gone.
                         OnFileClosed(notification.nmhdr.idFrom);
                         break;
 
@@ -396,20 +405,33 @@ namespace VirtualTabGroups.Plugin
 
         private static void OnFileClosed(IntPtr bufferId)
         {
-            if (_root == null || _stateStore == null) return;
+            CrashLog.Write("OnFileClosed: entered, bufferId=" + bufferId.ToInt64().ToString("X"));
+            if (_root == null || _stateStore == null)
+            {
+                CrashLog.Write("OnFileClosed: bailout - _root or _stateStore null");
+                return;
+            }
 
             var path = GetPathForBufferId(bufferId);
-            if (string.IsNullOrEmpty(path)) return;
+            CrashLog.Write("OnFileClosed: GetPathForBufferId returned '" + (path ?? "<null>") + "'");
+            if (string.IsNullOrEmpty(path))
+            {
+                CrashLog.Write("OnFileClosed: bailout - empty path (buffer likely already destroyed)");
+                return;
+            }
 
             string canonical;
             try { canonical = System.IO.Path.GetFullPath(path); }
             catch { canonical = path; }
+            CrashLog.Write("OnFileClosed: canonical='" + canonical + "'");
 
             int removed = VirtualTabGroups.Core.TreeMutator.RemoveAllByPath(_root, canonical);
+            CrashLog.Write("OnFileClosed: RemoveAllByPath removed " + removed + " node(s)");
             if (removed == 0) return;
 
             _panel?.RefreshFromModel();
             _stateStore.MarkDirty(_root, null);
+            CrashLog.Write("OnFileClosed: panel refreshed and MarkDirty called");
         }
 
         internal static string[] GetAllOpenFilePaths()
