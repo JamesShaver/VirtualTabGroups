@@ -51,6 +51,12 @@ namespace VirtualTabGroups.Plugin
         private static System.Drawing.Icon _tabIcon;
         private static IntPtr _tabIconHandle = IntPtr.Zero;
 
+        // Set when Notepad++ signals it's about to shut down. Used to suppress per-file
+        // auto-removal during shutdown, since every open buffer fires NPPN_FILEBEFORECLOSE
+        // as Notepad++ closes them — without this guard, those notifications would strip
+        // every currently-open document out of the user's saved virtual tree.
+        private static bool _isShuttingDown;
+
         // ---- Notepad++ unmanaged entry points ----
 
         /// <summary>
@@ -163,6 +169,21 @@ namespace VirtualTabGroups.Plugin
 
                     case NppNotif.NPPN_DARKMODECHANGED:
                         Theme?.RefreshColors();
+                        break;
+
+                    case NppNotif.NPPN_BEFORESHUTDOWN:
+                        // Notepad++ is about to start closing buffers. Block auto-removal
+                        // so the per-file close notifications that follow don't strip the
+                        // user's open documents out of the virtual tree before we save.
+                        _isShuttingDown = true;
+                        CrashLog.Write("beNotified: NPPN_BEFORESHUTDOWN — auto-removal suspended");
+                        break;
+
+                    case NppNotif.NPPN_CANCELSHUTDOWN:
+                        // User backed out of shutdown (e.g., Cancel on "Save dirty files?").
+                        // Restore normal auto-removal behavior.
+                        _isShuttingDown = false;
+                        CrashLog.Write("beNotified: NPPN_CANCELSHUTDOWN — auto-removal restored");
                         break;
 
                     case NppNotif.NPPN_SHUTDOWN:
@@ -511,6 +532,14 @@ namespace VirtualTabGroups.Plugin
         private static void OnFileClosed(IntPtr bufferId)
         {
             CrashLog.Write("OnFileClosed: entered, bufferId=" + bufferId.ToInt64().ToString("X"));
+            if (_isShuttingDown)
+            {
+                // Notepad++ closes every open buffer as part of shutdown. Removing each
+                // one here would silently delete the user's entire open document set from
+                // the virtual tree before we save state. Skip the cleanup entirely.
+                CrashLog.Write("OnFileClosed: bailout - shutdown in progress, preserving tree");
+                return;
+            }
             if (_root == null || _stateStore == null)
             {
                 CrashLog.Write("OnFileClosed: bailout - _root or _stateStore null");
