@@ -199,7 +199,7 @@ For `x86` or `ARM64`, swap the `/p:Platform=` value.
 ### Running tests
 
 ```powershell
-dotnet test VirtualTabGroups.Tests\VirtualTabGroups.Tests.csproj --nologo
+dotnet test tests\VirtualTabGroups.Tests\VirtualTabGroups.Tests.csproj --nologo
 ```
 
 The test project covers the model layer (StateStore, TreeMutator, NodeJsonConverter, AliasResolver, theme manager, observer) — 54 unit tests at the time of writing. UI behavior is verified manually inside Notepad++ since WinForms doesn't lend itself to automated testing without a real message loop.
@@ -239,6 +239,10 @@ The codebase is split into:
   - **`Plugin/Resources/`** — embedded `plugin.ico`.
 
 The model layer (`Core/`) is fully unit-tested without any Notepad++ instance. The UI layer (`Plugin/`) is exercised through manual smoke testing.
+
+### The `tests/` directory
+
+`tests/VirtualTabGroups.Tests/` is a separate xUnit project that covers everything under `Core/` plus the testable seams in `Plugin/` (the observer dedup logic, the theme manager). It is **never shipped** — the release zip contains only `VirtualTabGroups.dll` and `Newtonsoft.Json.dll`. The test project exists for CI (every PR and push to `main` runs `dotnet test`) and for refactoring safety. See [CONTRIBUTING.md](CONTRIBUTING.md) for a detailed breakdown of what's covered.
 
 ---
 
@@ -297,9 +301,7 @@ If you're interested in any of these, an issue or PR is welcome — see [Contrib
 
 Bug reports, feature requests, and PRs are all welcome via [GitHub Issues](https://github.com/JamesShaver/VirtualTabGroups/issues).
 
-When filing a bug, including the contents of `plugin.log` (or the relevant lines near the failure) helps enormously.
-
-For PRs, please run `dotnet test` locally before opening — the test suite is fast (~1 second) and catches most regressions in the model layer.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the project structure, build steps, and details on what the test project covers vs. what gets manual smoke-tested. When filing a bug, including the contents of `plugin.log` (or the relevant lines near the failure) helps enormously.
 
 ---
 

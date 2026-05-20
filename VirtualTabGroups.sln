@@ -5,7 +5,7 @@ VisualStudioVersion = 17.4.33205.214
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VirtualTabGroups", "VirtualTabGroups\VirtualTabGroups.csproj", "{DFB2432F-5C55-4D76-A7FA-934881E5D60A}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "VirtualTabGroups.Tests", "VirtualTabGroups.Tests\VirtualTabGroups.Tests.csproj", "{47970DAB-57C2-4E86-A7A7-97CA1766601E}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "VirtualTabGroups.Tests", "tests\VirtualTabGroups.Tests\VirtualTabGroups.Tests.csproj", "{47970DAB-57C2-4E86-A7A7-97CA1766601E}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
