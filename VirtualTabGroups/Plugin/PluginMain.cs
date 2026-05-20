@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -226,13 +227,12 @@ namespace VirtualTabGroups.Plugin
             // Smart purge: drop only the unsaved-buffer entries whose buffer didn't survive
             // the restart. Entries that match a currently-open unsaved buffer (Notepad++
             // session-backup case) are preserved so the user's curated tree stays intact.
-            var liveBufferNames = new HashSet<string>(
-                GetAllOpenFilePaths() ?? Array.Empty<string>(),
-                StringComparer.OrdinalIgnoreCase);
+            var openPaths = GetAllOpenFilePaths() ?? Array.Empty<string>();
+            var liveBufferNames = new HashSet<string>(openPaths.Where(p => p != null), StringComparer.OrdinalIgnoreCase);
             int purgedStale = PurgeDeadUnsavedEntries(_root, liveBufferNames);
             if (purgedStale > 0)
             {
-                CrashLog.Write("OnNppReady: purged " + purgedStale + " dead unsaved-buffer entry(ies), kept "
+                CrashLog.Write("OnNppReady: smart-purge removed " + purgedStale + " dead unsaved entry(ies); "
                     + liveBufferNames.Count + " live buffer(s)");
                 _stateStore.MarkDirty(_root, _stateStore.LastSelectedId);
             }
