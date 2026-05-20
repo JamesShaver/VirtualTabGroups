@@ -420,12 +420,13 @@ namespace VirtualTabGroups.Plugin
                 return;
             }
 
-            string canonical;
-            try { canonical = System.IO.Path.GetFullPath(path); }
-            catch { canonical = path; }
-            CrashLog.Write("OnFileClosed: canonical='" + canonical + "'");
-
-            int removed = VirtualTabGroups.Core.TreeMutator.RemoveAllByPath(_root, canonical);
+            // Do NOT canonicalize via Path.GetFullPath. Unsaved Notepad++ documents have
+            // names like "new 32" rather than absolute paths; Path.GetFullPath would
+            // resolve those against the process's current working directory and produce
+            // a string that never matches what we stored at add time. Both add and close
+            // go through the same NPPM_GETFULLPATHFROMBUFFERID, so the raw strings already
+            // match exactly. RemoveAllByPath compares case-insensitively for safety.
+            int removed = VirtualTabGroups.Core.TreeMutator.RemoveAllByPath(_root, path);
             CrashLog.Write("OnFileClosed: RemoveAllByPath removed " + removed + " node(s)");
             if (removed == 0) return;
 
