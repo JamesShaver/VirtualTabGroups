@@ -8,6 +8,10 @@ on:
 jobs:
   build-package-release:
     runs-on: windows-latest
+    # softprops/action-gh-release needs contents:write to create the draft release.
+    # The default GITHUB_TOKEN is read-only on repos with stricter permissions.
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
