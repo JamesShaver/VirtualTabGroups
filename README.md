@@ -72,9 +72,13 @@ The panel is **purely virtual**. It does not scan your disk, mirror folders, or 
 
 ## Install
 
+### Via Notepad++ Plugin Admin *(pending upstream merge)*
+
+Submitted to the official [nppPluginList](https://github.com/notepad-plus-plus/nppPluginList) catalog in [PR #1097](https://github.com/notepad-plus-plus/nppPluginList/pull/1097) on 2026-05-20. Once a maintainer merges, *Plugins → Plugins Admin → Available* will show **Virtual Tab Groups** under V — tick the box, click *Install*, restart Notepad++. Until then, use the release-zip path below.
+
 ### From a release zip
 
-1. Download `VirtualTabGroups_x64.zip` from the [Releases](https://github.com/JamesShaver/VirtualTabGroups/releases) page (use `_x86` if you're running 32-bit Notepad++).
+1. Download `VirtualTabGroups_x64.zip` from the [Releases](https://github.com/JamesShaver/VirtualTabGroups/releases) page (use `_x86` if you're running 32-bit Notepad++). Latest stable is [**v1.0.0**](https://github.com/JamesShaver/VirtualTabGroups/releases/tag/v1.0.0).
 2. Extract into `C:\Program Files\Notepad++\plugins\VirtualTabGroups\` (create the folder if needed). The directory should contain:
    ```
    VirtualTabGroups.dll
