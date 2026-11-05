@@ -224,9 +224,13 @@ namespace VirtualTabGroups.Plugin.UI
                 // from the selection strip on the left and from the dirty dot.
                 if (IsPinnedIndicator != null && IsPinnedIndicator(e.Node) && _accentBrush != null)
                 {
+                    // TreeView.Width includes the vertical scrollbar, so anchoring the bar
+                    // to Width painted the marker underneath the scroll strip where it was
+                    // invisible. Keep it inside the row, clear of the scrollbar.
                     int barHeight = Math.Max(6, e.Bounds.Height / 2);
+                    int barRight = Width - System.Windows.Forms.SystemInformation.VerticalScrollBarWidth - 4;
                     e.Graphics.FillRectangle(_accentBrush,
-                        new Rectangle(Width - 7, e.Bounds.Top + (e.Bounds.Height - barHeight) / 2, 3, barHeight));
+                        new Rectangle(barRight - 3, e.Bounds.Top + (e.Bounds.Height - barHeight) / 2, 3, barHeight));
                 }
 
                 var textRect = new Rectangle(indent, e.Bounds.Top, Math.Max(0, Width - indent), e.Bounds.Height);
