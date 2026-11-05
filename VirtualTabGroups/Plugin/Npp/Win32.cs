@@ -8,6 +8,15 @@ namespace VirtualTabGroups.Plugin.Npp
         [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         public static extern IntPtr SendMessage(IntPtr hWnd, int Msg, IntPtr wParam, IntPtr lParam);
 
+        [DllImport("user32.dll")]
+        public static extern bool SetCursor(IntPtr hCursor);
+
+        // Standard cursor ids (winuser.h).
+        public const int IDC_ARROW = 32512;
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern IntPtr LoadCursor(IntPtr hInstance, int lpCursorName);
+
         [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true, EntryPoint = "SendMessageW")]
         public static extern IntPtr SendMessageStringBuilder(IntPtr hWnd, int Msg, IntPtr wParam, System.Text.StringBuilder lParam);
 

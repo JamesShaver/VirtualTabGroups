@@ -23,7 +23,8 @@ namespace VirtualTabGroups.Core
                     writer.WritePropertyName("type"); writer.WriteValue("file");
                     writer.WritePropertyName("id");   writer.WriteValue(file.Id.ToString());
                     writer.WritePropertyName("name"); writer.WriteValue(file.Name);
-                    writer.WritePropertyName("path"); writer.WriteValue(file.Path);
+                    writer.WritePropertyName("path");   writer.WriteValue(file.Path);
+                    writer.WritePropertyName("pinned"); writer.WriteValue(file.IsPinned);
                     writer.WriteEndObject();
                     return;
 
@@ -57,6 +58,7 @@ namespace VirtualTabGroups.Core
                 case "file":
                     var file = new FileNode((string)obj["name"], (string)obj["path"]);
                     file.Id = Guid.Parse((string)obj["id"]);
+                    file.IsPinned = (bool?)obj["pinned"] ?? false;
                     return file;
 
                 case "folder":

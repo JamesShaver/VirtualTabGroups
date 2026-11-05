@@ -75,7 +75,7 @@ Tests run against a **temp directory** (no shared state) and a couple of fake in
 - Drag-and-drop interaction
 - Context menu structure
 - Keyboard shortcuts
-- File-close auto-removal (the `NPPN_FILEBEFORECLOSE` plumbing)
+- File-close history retention (the `NPPN_FILEBEFORECLOSE`/`NPPN_FILECLOSED` plumbing)
 - Double-click open via `NPPM_DOOPEN` / `NPPM_SWITCHTOFILE`
 
 These get **manual smoke-tested** inside Notepad++. The plugin writes a diagnostic log (`%appdata%\Notepad++\plugins\config\VirtualTabGroups\plugin.log`) that breadcrumbs every notable action, so reproducing a bug usually means doing the action and checking the log.
