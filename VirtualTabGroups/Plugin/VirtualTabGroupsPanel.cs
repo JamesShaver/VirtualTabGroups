@@ -40,6 +40,10 @@ namespace VirtualTabGroups.Plugin
         private TreeNode _pressNode;
         private Point _pressStart;
         private DateTime _pressAt;
+        // Row currently showing the close badge. Set only once the long-press
+        // threshold has actually elapsed, so an ordinary click never flashes it.
+        private TreeNode _closeArmedNode;
+
         private TreeNode _pendingClickNode;
         private DateTime _pendingClickAt;
         private readonly Timer _doubleClickTimer = new Timer { Interval = SystemInformation.DoubleClickTime };
@@ -234,6 +238,7 @@ namespace VirtualTabGroups.Plugin
             _tree.IsDirtyIndicator = IsDirtyIndicator;
             _tree.EmptyStateText = "Right-click a group to add open files";
             _tree.IsPinnedIndicator = node => node?.Tag is FileNode pinned && pinned.IsPinned;
+            _tree.IsCloseArmedIndicator = node => node != null && ReferenceEquals(node, _closeArmedNode);
             _tree.ImageList = _icons.Images;
             _tree.ImageIndex = _icons.FolderClosedIndex;
             _tree.SelectedImageIndex = _icons.FolderOpenIndex;
@@ -255,7 +260,10 @@ namespace VirtualTabGroups.Plugin
             {
                 _pressHintTimer.Stop();
                 if (_pressNode?.Tag is FileNode hinted)
+                {
                     _statusLabel.Text = "Release to close: " + hinted.Name;
+                    SetCloseArmedNode(_pressNode);
+                }
             };
             _tree.MouseDown += Tree_MouseDownLongPress;
             _tree.MouseMove += Tree_MouseMoveLongPress;
@@ -295,6 +303,7 @@ namespace VirtualTabGroups.Plugin
                     }
 
                     _pressHintTimer.Stop();
+                    SetCloseArmedNode(null);
                     _tree.DoDragDrop(payload, DragDropEffects.Move);
                 }
                 catch (Exception ex) { ReportError("Drag start", ex); }
@@ -876,11 +885,27 @@ namespace VirtualTabGroups.Plugin
             _pressNode = hit.Node;
             _pressStart = e.Location;
             _pressAt = DateTime.UtcNow;
+            SetCloseArmedNode(null);
 
             // Hint only: the action still runs on release, so a press that turns
             // into a drag (or ends outside the tree) can never close anything.
             _pressHintTimer.Stop();
             if (hit.Node.Tag is FileNode) _pressHintTimer.Start();
+        }
+
+        /// <summary>
+        /// Moves the close badge between rows (or off the tree) and repaints only the
+        /// rows involved. The badge is the visible half of the long-press warning; the
+        /// status line carries the same information as text.
+        /// </summary>
+        private void SetCloseArmedNode(TreeNode node)
+        {
+            if (ReferenceEquals(_closeArmedNode, node)) return;
+
+            var previous = _closeArmedNode;
+            _closeArmedNode = node;
+            if (previous != null && previous.TreeView == _tree) _tree.RedrawNode(previous);
+            if (node != null && node.TreeView == _tree) _tree.RedrawNode(node);
         }
 
         private void Tree_MouseMoveLongPress(object sender, MouseEventArgs e)
@@ -895,6 +920,7 @@ namespace VirtualTabGroups.Plugin
             {
                 _pressNode = null;
                 _pressHintTimer.Stop();
+                SetCloseArmedNode(null);
             }
         }
 
@@ -904,6 +930,7 @@ namespace VirtualTabGroups.Plugin
             var pressNode = _pressNode;
             _pressNode = null;
             _pressHintTimer.Stop();
+            SetCloseArmedNode(null);
 
             // Long press: button held on one spot for the threshold, evaluated on
             // release. A real drag never reaches this branch — the OLE drag loop

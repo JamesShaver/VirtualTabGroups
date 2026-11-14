@@ -46,6 +46,17 @@ namespace VirtualTabGroups.Plugin.UI
         /// </summary>
         public Func<TreeNode, bool> IsPinnedIndicator { get; set; }
 
+        /// <summary>
+        /// Optional predicate the panel sets while a long press is armed on a row.
+        /// An armed row gets a red close badge at its right edge, so the destructive
+        /// release-to-close gesture announces itself before the button comes up.
+        /// </summary>
+        public Func<TreeNode, bool> IsCloseArmedIndicator { get; set; }
+
+        private Color _dangerColor;
+        private SolidBrush _dangerBrush;
+        private Pen _glyphPen;
+
         public DarkAwareTreeView()
         {
             DrawMode = TreeViewDrawMode.OwnerDrawAll;
@@ -132,6 +143,14 @@ namespace VirtualTabGroups.Plugin.UI
             _edgeDottedPen  = new Pen(_theme.Edge) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dot };
             _hotEdgePen     = new Pen(_theme.HotEdge, 2);
 
+            // Red that reads on both palettes: a light red on a dark background, a
+            // deep one on a light background.
+            _dangerColor    = _theme.BackgroundError.GetBrightness() < 0.5
+                ? Color.FromArgb(232, 90, 80)
+                : Color.FromArgb(196, 43, 28);
+            _dangerBrush    = new SolidBrush(_dangerColor);
+            _glyphPen       = new Pen(Color.White, 2);
+
             Invalidate();
         }
 
@@ -145,6 +164,8 @@ namespace VirtualTabGroups.Plugin.UI
             _chevronBrush?.Dispose();  _chevronBrush  = null;
             _edgeDottedPen?.Dispose(); _edgeDottedPen = null;
             _hotEdgePen?.Dispose();    _hotEdgePen    = null;
+            _dangerBrush?.Dispose();   _dangerBrush   = null;
+            _glyphPen?.Dispose();      _glyphPen      = null;
         }
 
         protected override void Dispose(bool disposing)
@@ -233,10 +254,27 @@ namespace VirtualTabGroups.Plugin.UI
                         new Rectangle(barRight - 3, e.Bounds.Top + (e.Bounds.Height - barHeight) / 2, 3, barHeight));
                 }
 
-                var textRect = new Rectangle(indent, e.Bounds.Top, Math.Max(0, Width - indent), e.Bounds.Height);
+                // Close badge: while a long press is armed the row itself states that
+                // releasing will close the file — a red circle with an × at the right
+                // edge plus danger-coloured text, so the gesture never fires as a
+                // surprise.
+                bool closeArmed = IsCloseArmedIndicator != null && IsCloseArmedIndicator(e.Node);
+                int rightEdge = Width - System.Windows.Forms.SystemInformation.VerticalScrollBarWidth - 6;
+                if (closeArmed && _dangerBrush != null && _glyphPen != null)
+                {
+                    const int badge = 14;
+                    int badgeX = rightEdge - badge;
+                    int badgeY = e.Bounds.Top + (e.Bounds.Height - badge) / 2;
+                    e.Graphics.FillEllipse(_dangerBrush, badgeX, badgeY, badge, badge);
+                    e.Graphics.DrawLine(_glyphPen, badgeX + 4, badgeY + 4, badgeX + badge - 4, badgeY + badge - 4);
+                    e.Graphics.DrawLine(_glyphPen, badgeX + badge - 4, badgeY + 4, badgeX + 4, badgeY + badge - 4);
+                }
+
+                var textRect = new Rectangle(indent, e.Bounds.Top,
+                    Math.Max(0, (closeArmed ? rightEdge - 18 : Width) - indent), e.Bounds.Height);
                 // TextRenderer.DrawText accepts Color directly — no GDI allocation needed.
                 TextRenderer.DrawText(e.Graphics, e.Node.Text, Font, textRect,
-                    isSelected ? _theme.SelectionText : _theme.Text,
+                    isSelected ? _theme.SelectionText : (closeArmed ? _dangerColor : _theme.Text),
                     TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
 
                 e.DrawDefault = false;
