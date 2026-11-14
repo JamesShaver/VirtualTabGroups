@@ -162,15 +162,16 @@ namespace VirtualTabGroups.Plugin
                         break;
 
                     case NppNotif.NPPN_FILEBEFORECLOSE:
-                        // File-close notifications are observed for diagnostics only.
                         // Virtual Tab Groups is a history manager: closing a Notepad++
                         // tab must not remove its entry from the user's virtual tree.
+                        RememberPathBeforeClose(notification.nmhdr.idFrom);
                         OnFileClosed(notification.nmhdr.idFrom);
                         break;
 
                     case NppNotif.NPPN_FILECLOSED:
-                        // Keep the fallback notification wired for diagnostics. The
-                        // history entry remains available for a later reopen.
+                        // The document is gone; an indicator it left behind would keep
+                        // claiming unsaved changes for a buffer that no longer exists.
+                        ClearDirtyAfterClose(notification.nmhdr.idFrom);
                         OnFileClosed(notification.nmhdr.idFrom);
                         break;
 
@@ -314,6 +315,11 @@ namespace VirtualTabGroups.Plugin
                     _pendingUnsavedTimer?.Dispose();
                     _pendingUnsavedTimer = null;
                 }
+
+                // Nothing can be saved or closed after this point; the captured
+                // pre-save/pre-close paths must not outlive the session.
+                _pathsBeforeSave.Clear();
+                _pathsBeforeClose.Clear();
 
                 try { _stateStore?.Dispose(); }
                 catch (Exception ex) { CrashLog.Write("OnNppShutdown: state dispose failed - " + ex.Message); }
@@ -1001,6 +1007,14 @@ namespace VirtualTabGroups.Plugin
             new Dictionary<IntPtr, string>();
 
         /// <summary>
+        /// Paths captured at NPPN_FILEBEFORECLOSE, keyed by buffer ID. FILECLOSED no
+        /// longer resolves the buffer, so a discarded document's key is only readable
+        /// while it is still open.
+        /// </summary>
+        private static readonly Dictionary<IntPtr, string> _pathsBeforeClose =
+            new Dictionary<IntPtr, string>();
+
+        /// <summary>
         /// Set while the plugin reopens a file it renamed itself: NPPN_FILEOPENED must
         /// not auto-track that buffer as an additional entry.
         /// </summary>
@@ -1072,6 +1086,40 @@ namespace VirtualTabGroups.Plugin
             {
                 CrashLog.WriteException("RememberPathBeforeSave", ex);
             }
+        }
+
+        private static void RememberPathBeforeClose(IntPtr bufferId)
+        {
+            if (bufferId == IntPtr.Zero) return;
+
+            try
+            {
+                var path = GetPathForBufferId(bufferId);
+                if (string.IsNullOrEmpty(path)) _pathsBeforeClose.Remove(bufferId);
+                else _pathsBeforeClose[bufferId] = path;
+            }
+            catch (Exception ex)
+            {
+                CrashLog.WriteException("RememberPathBeforeClose", ex);
+            }
+        }
+
+        /// <summary>
+        /// Clears the unsaved-changes indicator of a document that just closed. Without
+        /// this a row kept its dot after a discarding close until the next restart,
+        /// because only a save ever cleared the key. A cancelled close never reaches
+        /// FILECLOSED, so a still-open dirty document keeps its indicator.
+        /// </summary>
+        private static void ClearDirtyAfterClose(IntPtr bufferId)
+        {
+            if (bufferId == IntPtr.Zero) return;
+
+            string path;
+            if (!_pathsBeforeClose.TryGetValue(bufferId, out path)) return;
+            _pathsBeforeClose.Remove(bufferId);
+            if (string.IsNullOrEmpty(path)) return;
+
+            _dirtyTracker.SetDirty(path, false);
         }
 
         /// <summary>
