@@ -264,6 +264,13 @@ namespace VirtualTabGroups.Plugin
                     _statusLabel.Text = "Release to close: " + hinted.Name;
                     SetCloseArmedNode(_pressNode);
                 }
+                else if (_pressNode?.Tag is FolderNode hintedFolder)
+                {
+                    // Folders have no tab to close, so the same gesture means
+                    // "remove this entry" and always asks before doing it.
+                    _statusLabel.Text = "Release to remove folder: " + hintedFolder.Name;
+                    SetCloseArmedNode(_pressNode);
+                }
             };
             _tree.MouseDown += Tree_MouseDownLongPress;
             _tree.MouseMove += Tree_MouseMoveLongPress;
@@ -890,7 +897,7 @@ namespace VirtualTabGroups.Plugin
             // Hint only: the action still runs on release, so a press that turns
             // into a drag (or ends outside the tree) can never close anything.
             _pressHintTimer.Stop();
-            if (hit.Node.Tag is FileNode) _pressHintTimer.Start();
+            if (hit.Node.Tag is FileNode || hit.Node.Tag is FolderNode) _pressHintTimer.Start();
         }
 
         /// <summary>
@@ -947,6 +954,25 @@ namespace VirtualTabGroups.Plugin
                     // is removed only after the close succeeds.
                     try { OnFileCloseAndRemove(file); }
                     catch (Exception ex) { ReportError("Long-press close/remove", ex); }
+                }
+                else if (pressNode.Tag is FolderNode folder)
+                {
+                    // Removing a folder never touches the tabs, so the only thing to
+                    // confirm is the entry itself — always, even for an empty folder,
+                    // because the gesture is deliberate and easy to trigger by accident.
+                    try
+                    {
+                        int descendants = CountDescendants(folder);
+                        var result = MessageBox.Show(
+                            this,
+                            RemovePolicy.Describe(folder, descendants),
+                            "Virtual Tab Groups",
+                            MessageBoxButtons.OKCancel,
+                            MessageBoxIcon.Warning);
+                        if (result == DialogResult.OK)
+                            RemoveEntry(folder, skipConfirmation: true);
+                    }
+                    catch (Exception ex) { ReportError("Long-press remove folder", ex); }
                 }
                 return;
             }

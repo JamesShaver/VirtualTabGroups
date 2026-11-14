@@ -130,7 +130,7 @@ Drag files or folders between folders. Multi-select with `Ctrl+click` to pick se
 
 Single-click a file node (or press `Enter` on it) to switch Notepad++'s focus to that file's tab. If the file is no longer open, it's reopened from disk.
 
-Double-click renames the real saved file after a warning, or opens Save As for an unsaved buffer. A long press arms the destructive gesture visibly: once the threshold passes, the pressed row shows a red close badge (a filled circle with an ×) and its label turns red, while the status line reads *Release to close: …*. Releasing then runs the native close flow and removes the virtual entry only after the close succeeds; moving the pointer first turns the press into a drag and drops the gesture, badge included.
+Double-click renames the real saved file after a warning, or opens Save As for an unsaved buffer. A long press arms the destructive gesture visibly: once the threshold passes, the pressed row shows a red close badge (a filled circle with an ×) and its label turns red, while the status line reads *Release to close: …*. Releasing then runs the native close flow and removes the virtual entry only after the close succeeds. On a folder the same gesture means *remove this entry*: it asks first, always — even for an empty folder — and never closes tabs or deletes files. Moving the pointer first turns the press into a drag and drops the gesture, badge included.
 
 Clicking a folder only selects it — the tab set never changes. Double-clicking a folder expands or collapses it. To replace every unpinned tab with that folder's files, use *Replace workspace with folder files…* in the folder's context menu; it lists the tabs that would close and asks before doing anything.
 
