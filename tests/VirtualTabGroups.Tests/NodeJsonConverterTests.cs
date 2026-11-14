@@ -21,7 +21,7 @@ namespace VirtualTabGroups.Tests
             var json = JsonConvert.SerializeObject(file, Settings());
 
             Assert.Equal(
-                "{\"type\":\"file\",\"id\":\"11111111-1111-1111-1111-111111111111\",\"name\":\"User.php\",\"path\":\"C:\\\\src\\\\User.php\"}",
+                "{\"type\":\"file\",\"id\":\"11111111-1111-1111-1111-111111111111\",\"name\":\"User.php\",\"path\":\"C:\\\\src\\\\User.php\",\"pinned\":false}",
                 json);
         }
 
@@ -34,13 +34,14 @@ namespace VirtualTabGroups.Tests
 
             var file = new FileNode("User.php", @"C:\src\User.php");
             file.Id = new System.Guid("33333333-3333-3333-3333-333333333333");
+            file.IsPinned = true;
             folder.Children.Add(file);
 
             var json = JsonConvert.SerializeObject(folder, Settings());
 
             Assert.Equal(
                 "{\"type\":\"folder\",\"id\":\"22222222-2222-2222-2222-222222222222\",\"name\":\"Auth\",\"expanded\":true,\"children\":[" +
-                "{\"type\":\"file\",\"id\":\"33333333-3333-3333-3333-333333333333\",\"name\":\"User.php\",\"path\":\"C:\\\\src\\\\User.php\"}" +
+                "{\"type\":\"file\",\"id\":\"33333333-3333-3333-3333-333333333333\",\"name\":\"User.php\",\"path\":\"C:\\\\src\\\\User.php\",\"pinned\":true}" +
                 "]}",
                 json);
         }
@@ -76,6 +77,7 @@ namespace VirtualTabGroups.Tests
             var userBack = (FileNode)authBack.Children[0];
             Assert.Equal("User.php", userBack.Name);
             Assert.Equal(@"C:\src\auth\User.php", userBack.Path);
+            Assert.False(userBack.IsPinned);
 
             var readmeBack = (FileNode)rehydrated.Children[1];
             Assert.Equal("README", readmeBack.Name);

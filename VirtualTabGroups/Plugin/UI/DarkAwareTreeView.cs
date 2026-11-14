@@ -12,12 +12,15 @@ namespace VirtualTabGroups.Plugin.UI
         // Cached GDI objects — rebuilt in ApplyTheme, disposed in DisposeCachedGdi.
         private SolidBrush _bgBrush;
         private SolidBrush _bgHotterBrush;
+        private SolidBrush _hoverBrush;
+        private SolidBrush _accentBrush;
         private SolidBrush _textBrush;
         private Pen _edgeDottedPen;
         private Pen _hotEdgePen;
         private Brush _chevronBrush;
 
         private string _emptyStateText;
+        private TreeNode _hotNode;
         public string EmptyStateText
         {
             get => _emptyStateText;
@@ -30,27 +33,84 @@ namespace VirtualTabGroups.Plugin.UI
         /// </summary>
         public Func<TreeNode, bool> IsExtraSelected { get; set; }
 
+        /// <summary>
+        /// Optional predicate the panel sets to mark file rows with unsaved changes.
+        /// When it returns true, an accent dot is painted before the row text (like
+        /// a modern editor's modified-file marker).
+        /// </summary>
+        public Func<TreeNode, bool> IsDirtyIndicator { get; set; }
+
+        /// <summary>
+        /// Optional predicate the panel sets to mark pinned file rows. Pinned rows are
+        /// ordered first and get a slim accent bar at the right edge.
+        /// </summary>
+        public Func<TreeNode, bool> IsPinnedIndicator { get; set; }
+
+        /// <summary>
+        /// Optional predicate the panel sets while a long press is armed on a row.
+        /// An armed row gets a red close badge at its right edge, so the destructive
+        /// release-to-close gesture announces itself before the button comes up.
+        /// </summary>
+        public Func<TreeNode, bool> IsCloseArmedIndicator { get; set; }
+
+        private Color _dangerColor;
+        private SolidBrush _dangerBrush;
+        private Pen _glyphPen;
+
         public DarkAwareTreeView()
         {
             DrawMode = TreeViewDrawMode.OwnerDrawAll;
             ShowLines = false;       // we paint our own connector lines (Task 37)
             ShowPlusMinus = false;   // we paint our own chevrons
             ShowRootLines = false;
-            ShowNodeToolTips = false;
+            // Native tooltips carry the full path for labels that do not fit the row.
+            ShowNodeToolTips = true;
             HideSelection = false;
-            LabelEdit = true;
+            // Disable the native inline editor. It creates a transient textbox that
+            // conflicts with single/double/long-click gestures and can visually flicker.
+            LabelEdit = false;
+            // Defense in depth: cancel any native label-edit request as well.
+            // This prevents the transient WinForms textbox even if a keyboard or
+            // mouse gesture reaches the underlying TreeView control.
+            BeforeLabelEdit += (s, e) => e.CancelEdit = true;
             AllowDrop = true;
             // FullRowSelect = true so WinForms' hit-test treats the entire row as
             // clickable. Our owner-draw paints text at a custom x-position (after the
             // chevron + icon); with FullRowSelect=false the default hit-test thinks the
             // text is at its default position and clicks on the visible text miss.
             FullRowSelect = true;
+            ItemHeight = 28;
+            Indent = 20;
+            Font = new Font("Segoe UI", 9F, FontStyle.Regular, GraphicsUnit.Point);
+
+            MouseMove += HandleMouseMove;
+            MouseLeave += (s, e) => SetHotNode(null);
 
             // Double-buffer the TreeView to reduce flicker during owner-draw paint passes.
             // TreeView's DoubleBuffered is protected — set via the control-styles API.
             SetStyle(System.Windows.Forms.ControlStyles.OptimizedDoubleBuffer
                    | System.Windows.Forms.ControlStyles.AllPaintingInWmPaint, true);
             UpdateStyles();
+        }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            // TreeView creates its native handle lazily. Reassert the setting after
+            // handle creation so no native edit control can be requested later.
+            LabelEdit = false;
+
+            // Scale row metrics with the monitor DPI: fixed pixels clipped text and
+            // misaligned icons at 125/150 %.
+            float scale = DeviceDpi / 96f;
+            ItemHeight = (int)Math.Round(28 * scale);
+            Indent = (int)Math.Round(20 * scale);
+        }
+
+        protected override void OnBeforeLabelEdit(NodeLabelEditEventArgs e)
+        {
+            e.CancelEdit = true;
+            base.OnBeforeLabelEdit(e);
         }
 
         public void AttachTheme(ThemeManager theme)
@@ -69,17 +129,27 @@ namespace VirtualTabGroups.Plugin.UI
         private void ApplyTheme()
         {
             if (_theme == null) return;
-            BackColor = _theme.Background;
+            BackColor = _theme.Surface;
             ForeColor = _theme.Text;
             LineColor = _theme.Edge;
 
             DisposeCachedGdi();
-            _bgBrush        = new SolidBrush(_theme.Background);
-            _bgHotterBrush  = new SolidBrush(_theme.BackgroundHotter);
+            _bgBrush        = new SolidBrush(_theme.Surface);
+            _bgHotterBrush  = new SolidBrush(_theme.SelectionBackground);
+            _hoverBrush     = new SolidBrush(_theme.HoverBackground);
+            _accentBrush    = new SolidBrush(_theme.Accent);
             _textBrush      = new SolidBrush(_theme.Text);
             _chevronBrush   = new SolidBrush(_theme.Text);
             _edgeDottedPen  = new Pen(_theme.Edge) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dot };
             _hotEdgePen     = new Pen(_theme.HotEdge, 2);
+
+            // Red that reads on both palettes: a light red on a dark background, a
+            // deep one on a light background.
+            _dangerColor    = _theme.BackgroundError.GetBrightness() < 0.5
+                ? Color.FromArgb(232, 90, 80)
+                : Color.FromArgb(196, 43, 28);
+            _dangerBrush    = new SolidBrush(_dangerColor);
+            _glyphPen       = new Pen(Color.White, 2);
 
             Invalidate();
         }
@@ -88,10 +158,14 @@ namespace VirtualTabGroups.Plugin.UI
         {
             _bgBrush?.Dispose();       _bgBrush       = null;
             _bgHotterBrush?.Dispose(); _bgHotterBrush = null;
+            _hoverBrush?.Dispose();    _hoverBrush    = null;
+            _accentBrush?.Dispose();   _accentBrush   = null;
             _textBrush?.Dispose();     _textBrush     = null;
             _chevronBrush?.Dispose();  _chevronBrush  = null;
             _edgeDottedPen?.Dispose(); _edgeDottedPen = null;
             _hotEdgePen?.Dispose();    _hotEdgePen    = null;
+            _dangerBrush?.Dispose();   _dangerBrush   = null;
+            _glyphPen?.Dispose();      _glyphPen      = null;
         }
 
         protected override void Dispose(bool disposing)
@@ -115,8 +189,22 @@ namespace VirtualTabGroups.Plugin.UI
                 // panel's multi-selection predicate claims it (Ctrl/Shift+click set).
                 bool isSelected = (e.State & TreeNodeStates.Selected) != 0
                                   || (IsExtraSelected != null && IsExtraSelected(e.Node));
-                var brush = isSelected ? _bgHotterBrush : _bgBrush;
+                bool isDropTarget = _dropHighlightNode == e.Node;
+                bool isHovered = _hotNode == e.Node && !isSelected && !isDropTarget;
+                var brush = isSelected ? _bgHotterBrush
+                    : isDropTarget ? _hoverBrush
+                    : isHovered ? _hoverBrush
+                    : _bgBrush;
                 e.Graphics.FillRectangle(brush, new Rectangle(0, e.Bounds.Top, Width, e.Bounds.Height));
+
+                // Accent frame marks the "drop into folder" target — visually distinct
+                // from selection (filled accent strip) and from the insertion line.
+                if (isDropTarget && _hotEdgePen != null)
+                    e.Graphics.DrawRectangle(_hotEdgePen,
+                        new Rectangle(1, e.Bounds.Top + 1, Width - 3, e.Bounds.Height - 3));
+
+                if (isSelected && _accentBrush != null)
+                    e.Graphics.FillRectangle(_accentBrush, new Rectangle(0, e.Bounds.Top, 3, e.Bounds.Height));
 
                 int indent = e.Node.Level * Indent + 2;
 
@@ -143,10 +231,51 @@ namespace VirtualTabGroups.Plugin.UI
                     indent += 18;
                 }
 
-                var textRect = new Rectangle(indent, e.Bounds.Top, Width - indent, e.Bounds.Height);
+                // Unsaved-changes dot: a small accent circle before the text, the same
+                // visual language modern editors use for modified documents. Rows shift
+                // text only when the dot is actually shown — no jitter for clean files.
+                if (IsDirtyIndicator != null && IsDirtyIndicator(e.Node) && _accentBrush != null)
+                {
+                    int dotY = e.Bounds.Top + (e.Bounds.Height - 6) / 2;
+                    e.Graphics.FillEllipse(_accentBrush, indent, dotY, 6, 6);
+                    indent += 10;
+                }
+
+                // Pinned marker: a slim accent bar at the right edge, visually separate
+                // from the selection strip on the left and from the dirty dot.
+                if (IsPinnedIndicator != null && IsPinnedIndicator(e.Node) && _accentBrush != null)
+                {
+                    // TreeView.Width includes the vertical scrollbar, so anchoring the bar
+                    // to Width painted the marker underneath the scroll strip where it was
+                    // invisible. Keep it inside the row, clear of the scrollbar.
+                    int barHeight = Math.Max(6, e.Bounds.Height / 2);
+                    int barRight = Width - System.Windows.Forms.SystemInformation.VerticalScrollBarWidth - 4;
+                    e.Graphics.FillRectangle(_accentBrush,
+                        new Rectangle(barRight - 3, e.Bounds.Top + (e.Bounds.Height - barHeight) / 2, 3, barHeight));
+                }
+
+                // Close badge: while a long press is armed the row itself states that
+                // releasing will close the file — a red circle with an × at the right
+                // edge plus danger-coloured text, so the gesture never fires as a
+                // surprise.
+                bool closeArmed = IsCloseArmedIndicator != null && IsCloseArmedIndicator(e.Node);
+                int rightEdge = Width - System.Windows.Forms.SystemInformation.VerticalScrollBarWidth - 6;
+                if (closeArmed && _dangerBrush != null && _glyphPen != null)
+                {
+                    const int badge = 14;
+                    int badgeX = rightEdge - badge;
+                    int badgeY = e.Bounds.Top + (e.Bounds.Height - badge) / 2;
+                    e.Graphics.FillEllipse(_dangerBrush, badgeX, badgeY, badge, badge);
+                    e.Graphics.DrawLine(_glyphPen, badgeX + 4, badgeY + 4, badgeX + badge - 4, badgeY + badge - 4);
+                    e.Graphics.DrawLine(_glyphPen, badgeX + badge - 4, badgeY + 4, badgeX + 4, badgeY + badge - 4);
+                }
+
+                var textRect = new Rectangle(indent, e.Bounds.Top,
+                    Math.Max(0, (closeArmed ? rightEdge - 18 : Width) - indent), e.Bounds.Height);
                 // TextRenderer.DrawText accepts Color directly — no GDI allocation needed.
-                TextRenderer.DrawText(e.Graphics, e.Node.Text, Font, textRect, _theme.Text,
-                    TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
+                TextRenderer.DrawText(e.Graphics, e.Node.Text, Font, textRect,
+                    isSelected ? _theme.SelectionText : (closeArmed ? _dangerColor : _theme.Text),
+                    TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
 
                 e.DrawDefault = false;
             }
@@ -174,9 +303,29 @@ namespace VirtualTabGroups.Plugin.UI
         }
 
         private Rectangle? _insertionLine;
+        private TreeNode _dropHighlightNode;
 
+        // True while a drag hovers over an empty tree: the empty-state card is
+        // drawn with accent highlight so the user sees the drop is accepted.
+        private bool _emptyStateDropHighlighted;
+
+        // Last client rectangle painted for the empty-state card, used to
+        // invalidate precisely when the highlight toggles.
+        private Rectangle _emptyStateCardRect;
+
+        /// <summary>
+        /// Draws a horizontal insertion line at the given y — the drop indicator for
+        /// reordering (drop above/below a row). Clears any folder highlight.
+        /// </summary>
         public void ShowInsertionLine(int y)
         {
+            if (_dropHighlightNode != null)
+            {
+                var stale = _dropHighlightNode;
+                _dropHighlightNode = null;
+                InvalidateNode(stale);
+            }
+
             // Skip redundant invalidates when the line position hasn't changed.
             if (_insertionLine.HasValue && _insertionLine.Value.Top == y)
                 return;
@@ -192,6 +341,72 @@ namespace VirtualTabGroups.Plugin.UI
                 Invalidate(new Rectangle(0, oldY.Value - strip, Width, strip * 2 + 1));
         }
 
+        /// <summary>
+        /// Highlights a whole row — the drop indicator for "drop into folder".
+        /// Clears any insertion line.
+        /// </summary>
+        public void ShowDropHighlight(TreeNode node)
+        {
+            if (node == null || node.TreeView != this) return;
+            if (_insertionLine != null) ClearInsertionLine();
+            if (_dropHighlightNode == node) return;
+
+            var previous = _dropHighlightNode;
+            _dropHighlightNode = node;
+            InvalidateNode(previous);
+            InvalidateNode(_dropHighlightNode);
+        }
+
+        /// <summary>
+        /// Highlights the empty-state placeholder card while a drag hovers over
+        /// an empty tree: accent border + hover background instead of neutral.
+        /// </summary>
+        public void ShowEmptyStateDropHighlight()
+        {
+            if (_emptyStateDropHighlighted) return;
+            _emptyStateDropHighlighted = true;
+            Invalidate(GetCardInvalidateRect());
+        }
+
+        /// <summary>
+        /// Removes all drag indicators (insertion line, row highlight and the
+        /// empty-state placeholder highlight). Safe to call when nothing is shown.
+        /// </summary>
+        public void ClearDropIndicators()
+        {
+            ClearInsertionLine();
+            if (_dropHighlightNode != null)
+            {
+                var previous = _dropHighlightNode;
+                _dropHighlightNode = null;
+                InvalidateNode(previous);
+            }
+            if (_emptyStateDropHighlighted)
+            {
+                _emptyStateDropHighlighted = false;
+                Invalidate(GetCardInvalidateRect());
+            }
+        }
+
+        /// <summary>Client rectangle to invalidate when the card visual toggles.</summary>
+        private Rectangle GetCardInvalidateRect()
+        {
+            // Prefer the rectangle measured during the last paint; before the first
+            // paint fall back to the static card geometry from ClientRectangle.
+            var bounds = _emptyStateCardRect;
+            if (bounds.IsEmpty)
+            {
+                var client = ClientRectangle;
+                bounds = new Rectangle(client.Left + 18, client.Top + client.Height / 3 - 18,
+                    Math.Max(0, client.Width - 36), 64);
+            }
+            bounds.Inflate(4, 4);
+            return bounds;
+        }
+
+        /// <summary>
+        /// Clears the insertion line if one is shown; no-op otherwise.
+        /// </summary>
         public void ClearInsertionLine()
         {
             if (_insertionLine == null) return;
@@ -216,14 +431,71 @@ namespace VirtualTabGroups.Plugin.UI
                 if (!string.IsNullOrEmpty(_emptyStateText) && Nodes.Count == 0 && _theme != null)
                 {
                     var bounds   = ClientRectangle;
-                    var textRect = new Rectangle(bounds.Left, bounds.Top + bounds.Height / 3, bounds.Width, Font.Height + 4);
+                    var card = new Rectangle(bounds.Left + 18, bounds.Top + bounds.Height / 3 - 18,
+                        Math.Max(0, bounds.Width - 36), 64);
+                    _emptyStateCardRect = card;
+
+                    if (_emptyStateDropHighlighted)
+                    {
+                        // Drop accepted: hover background + accent frame (same visual
+                        // language as the folder drop highlight above).
+                        if (_hoverBrush != null)
+                            e.Graphics.FillRectangle(_hoverBrush, card);
+                        if (_hotEdgePen != null)
+                            e.Graphics.DrawRectangle(_hotEdgePen,
+                                new Rectangle(card.Left + 1, card.Top + 1, card.Width - 3, card.Height - 3));
+                    }
+                    else
+                    {
+                        using (var cardBrush = new SolidBrush(_theme.SurfaceAlt))
+                            e.Graphics.FillRectangle(cardBrush, card);
+                        using (var border = new Pen(_theme.Divider))
+                            e.Graphics.DrawRectangle(border, card);
+                    }
+
+                    var textRect = new Rectangle(card.Left + 8, card.Top + 10, card.Width - 16, 42);
                     TextRenderer.DrawText(e.Graphics, _emptyStateText, Font, textRect,
-                        _theme.DisabledText,
-                        TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+                        _emptyStateDropHighlighted ? _theme.Text : _theme.DisabledText,
+                        TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.WordBreak);
                 }
             }
             catch (Exception ex) { CrashLog.WriteException("DarkAwareTreeView.OnPaint", ex); }
         }
+
+        private void HandleMouseMove(object sender, MouseEventArgs e)
+        {
+            SetHotNode(GetNodeAt(e.X, e.Y));
+        }
+
+        private void SetHotNode(TreeNode node)
+        {
+            if (_hotNode == node) return;
+
+            var previous = _hotNode;
+            _hotNode = node;
+            InvalidateNode(previous);
+            InvalidateNode(_hotNode);
+        }
+
+        private void InvalidateNode(TreeNode node)
+        {
+            if (node == null || node.TreeView != this) return;
+            // OnDrawNode paints the FULL row (0..Width): row background, hover,
+            // accent frame — all wider than node.Bounds, which covers only the
+            // text area starting after the indent. Invalidating node.Bounds left
+            // stale pixels on the row edges — the torn/partial drop highlight.
+            // Invalidate exactly what will be painted: the full row.
+            var bounds = node.Bounds;
+            var row = new Rectangle(0, bounds.Top, Width, bounds.Height);
+            row.Inflate(0, 2);
+            Invalidate(row);
+        }
+
+        /// <summary>
+        /// Public wrapper so the panel can repaint a single row after a dirty-state
+        /// change (dot appears/disappears) without rebuilding the tree.
+        /// </summary>
+        public void RedrawNode(TreeNode node) => InvalidateNode(node);
 
         protected override void OnMouseDown(MouseEventArgs e)
         {

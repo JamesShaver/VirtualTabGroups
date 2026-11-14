@@ -14,12 +14,12 @@ namespace VirtualTabGroups.Plugin.UI
 
         protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e)
         {
-            using (var b = new SolidBrush(_theme.Background)) e.Graphics.FillRectangle(b, e.AffectedBounds);
+            using (var b = new SolidBrush(_theme.Surface)) e.Graphics.FillRectangle(b, e.AffectedBounds);
         }
 
         protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
         {
-            var bg = e.Item.Selected ? _theme.BackgroundHotter : _theme.Background;
+            var bg = e.Item.Selected ? _theme.SelectionBackground : _theme.Surface;
             using (var b = new SolidBrush(bg)) e.Graphics.FillRectangle(b, new Rectangle(Point.Empty, e.Item.Size));
         }
 
@@ -37,7 +37,7 @@ namespace VirtualTabGroups.Plugin.UI
 
         protected override void OnRenderImageMargin(ToolStripRenderEventArgs e)
         {
-            using (var b = new SolidBrush(_theme.BackgroundSofter)) e.Graphics.FillRectangle(b, e.AffectedBounds);
+            using (var b = new SolidBrush(_theme.SurfaceAlt)) e.Graphics.FillRectangle(b, e.AffectedBounds);
         }
 
         protected override void OnRenderArrow(ToolStripArrowRenderEventArgs e)
@@ -56,15 +56,15 @@ namespace VirtualTabGroups.Plugin.UI
         {
             private readonly ThemeManager _t;
             public DarkColorTable(ThemeManager t) { _t = t; }
-            public override Color MenuItemSelected => _t.BackgroundHotter;
-            public override Color MenuItemSelectedGradientBegin => _t.BackgroundHotter;
-            public override Color MenuItemSelectedGradientEnd => _t.BackgroundHotter;
-            public override Color MenuItemBorder => _t.HotEdge;
-            public override Color MenuBorder => _t.Edge;
-            public override Color ToolStripDropDownBackground => _t.Background;
-            public override Color ImageMarginGradientBegin => _t.BackgroundSofter;
-            public override Color ImageMarginGradientMiddle => _t.BackgroundSofter;
-            public override Color ImageMarginGradientEnd => _t.BackgroundSofter;
+            public override Color MenuItemSelected => _t.SelectionBackground;
+            public override Color MenuItemSelectedGradientBegin => _t.SelectionBackground;
+            public override Color MenuItemSelectedGradientEnd => _t.SelectionBackground;
+            public override Color MenuItemBorder => _t.Accent;
+            public override Color MenuBorder => _t.Divider;
+            public override Color ToolStripDropDownBackground => _t.Surface;
+            public override Color ImageMarginGradientBegin => _t.SurfaceAlt;
+            public override Color ImageMarginGradientMiddle => _t.SurfaceAlt;
+            public override Color ImageMarginGradientEnd => _t.SurfaceAlt;
         }
     }
 }

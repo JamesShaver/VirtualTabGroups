@@ -11,6 +11,9 @@ namespace VirtualTabGroups.Plugin.Npp
         NPPN_FILEBEFOREOPEN = NPPN_FIRST + 6,
         NPPN_FILEBEFORESAVE = NPPN_FIRST + 7,
         NPPN_FILESAVED = NPPN_FIRST + 8,
+        // Fires after the user renamed a file from Notepad++'s main window
+        // (File menu or tab context menu). idFrom = bufferId, textPtr = new full path.
+        NPPN_FILERENAMED = NPPN_FIRST + 31,
         NPPN_SHUTDOWN = NPPN_FIRST + 9,
         NPPN_BUFFERACTIVATED = NPPN_FIRST + 10,
         NPPN_LANGCHANGED = NPPN_FIRST + 11,

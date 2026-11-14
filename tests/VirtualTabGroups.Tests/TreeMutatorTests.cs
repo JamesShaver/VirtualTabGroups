@@ -44,6 +44,34 @@ namespace VirtualTabGroups.Tests
         }
 
         [Fact]
+        public void AddFile_AtTop_InsertsAsFirstChild()
+        {
+            var folder = new FolderNode("Auth");
+            folder.Children.Add(new FileNode("A.php", @"C:\a\A.php"));
+            folder.Children.Add(new FileNode("B.php", @"C:\b\B.php"));
+
+            var added = TreeMutator.AddFile(folder, @"C:\c\C.php", atTop: true);
+
+            Assert.NotNull(added);
+            Assert.Same(added, folder.Children[0]);
+            Assert.Equal(3, folder.Children.Count);
+        }
+
+        [Fact]
+        public void AddFile_AtTop_UnsavedBufferName_InsertsAsFirstChild()
+        {
+            var folder = new FolderNode("");
+            folder.Children.Add(new FileNode("new 2", "new 2"));
+
+            var added = TreeMutator.AddFile(folder, "new 1", atTop: true);
+
+            Assert.NotNull(added);
+            Assert.Equal("new 1", added.Name);
+            Assert.Same(added, folder.Children[0]);
+            Assert.Equal(2, folder.Children.Count);
+        }
+
+        [Fact]
         public void RemoveNode_FileInFolder_RemovesFromContainer()
         {
             var root = new FolderNode("");

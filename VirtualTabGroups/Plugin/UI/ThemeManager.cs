@@ -28,7 +28,18 @@ namespace VirtualTabGroups.Plugin.UI
         public Color HotEdge { get; private set; }
         public Color DisabledEdge { get; private set; }
 
+        // Semantic UI colors. Controls should use these roles instead of mixing
+        // raw Notepad++ palette values with SystemColors.
+        public Color Surface { get; private set; }
+        public Color SurfaceAlt { get; private set; }
+        public Color HoverBackground { get; private set; }
+        public Color SelectionBackground { get; private set; }
+        public Color SelectionText { get; private set; }
+        public Color Accent { get; private set; }
+        public Color Divider { get; private set; }
+
         public event Action Changed;
+
 
         public void Initialize() => RefreshColors();
 
@@ -51,6 +62,13 @@ namespace VirtualTabGroups.Plugin.UI
                 Edge             = DarkModeColors.FromColorRef(p.EdgeColor);
                 HotEdge          = DarkModeColors.FromColorRef(p.HotEdgeColor);
                 DisabledEdge     = DarkModeColors.FromColorRef(p.DisabledEdgeColor);
+                Surface           = Background;
+                SurfaceAlt        = BackgroundSofter;
+                HoverBackground    = BackgroundSofter;
+                SelectionBackground = BackgroundHotter;
+                SelectionText      = Text;
+                Accent             = HotEdge;
+                Divider            = Edge;
             }
             else
             {
@@ -66,6 +84,13 @@ namespace VirtualTabGroups.Plugin.UI
                 Edge             = SystemColors.ControlDark;
                 HotEdge          = SystemColors.Highlight;
                 DisabledEdge     = SystemColors.ControlDarkDark;
+                Surface           = SystemColors.Window;
+                SurfaceAlt        = Color.FromArgb(248, 250, 252);
+                HoverBackground    = Color.FromArgb(242, 246, 250);
+                SelectionBackground = Color.FromArgb(225, 236, 255);
+                SelectionText      = Color.FromArgb(24, 55, 92);
+                Accent             = Color.FromArgb(0, 120, 212);
+                Divider            = Color.FromArgb(225, 229, 234);
             }
 
             Changed?.Invoke();

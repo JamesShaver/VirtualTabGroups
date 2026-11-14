@@ -8,9 +8,10 @@ namespace VirtualTabGroups.Core
         /// <summary>
         /// Adds a file to the target folder. If a FileNode with the same Path already exists
         /// as a direct child, returns null (no duplicate added). Otherwise uses AliasResolver
-        /// to compute a display name unique within the folder, appends, and returns the new node.
+        /// to compute a display name unique within the folder, appends — or prepends when
+        /// <paramref name="atTop"/> is set — and returns the new node.
         /// </summary>
-        public static FileNode AddFile(FolderNode folder, string absolutePath)
+        public static FileNode AddFile(FolderNode folder, string absolutePath, bool atTop = false)
         {
             if (folder == null) throw new ArgumentNullException(nameof(folder));
             if (string.IsNullOrEmpty(absolutePath)) throw new ArgumentException("path required", nameof(absolutePath));
@@ -22,12 +23,10 @@ namespace VirtualTabGroups.Core
 
             var displayName = AliasResolver.Resolve(folder, absolutePath);
             var fileNode = new FileNode(displayName, absolutePath);
-            folder.Children.Add(fileNode);
+            if (atTop) folder.Children.Insert(0, fileNode);
+            else folder.Children.Add(fileNode);
             return fileNode;
         }
-
-        /// <summary>
-        /// Removes the given node from whichever folder contains it. Walks from root.
         /// Returns true if the node was found and removed; false if not in the tree.
         /// </summary>
         public static bool RemoveNode(TreeNodeModel node, FolderNode root)

@@ -44,6 +44,8 @@ namespace VirtualTabGroups.Tests
             Assert.Equal(Color.FromArgb(0x2B, 0x2B, 0x2B), tm.Background);
             Assert.Equal(Color.FromArgb(0xDD, 0xDD, 0xDD), tm.Text);
             Assert.Equal(Color.FromArgb(0x55, 0x55, 0x55), tm.Edge);
+            Assert.Equal(tm.Background, tm.Surface);
+            Assert.Equal(tm.BackgroundHotter, tm.SelectionBackground);
         }
 
         [Fact]
@@ -57,6 +59,8 @@ namespace VirtualTabGroups.Tests
             Assert.False(tm.IsDark);
             Assert.Equal(SystemColors.Window, tm.Background);
             Assert.Equal(SystemColors.ControlText, tm.Text);
+            Assert.Equal(Color.FromArgb(0, 120, 212), tm.Accent);
+            Assert.Equal(Color.FromArgb(225, 236, 255), tm.SelectionBackground);
         }
     }
 }
