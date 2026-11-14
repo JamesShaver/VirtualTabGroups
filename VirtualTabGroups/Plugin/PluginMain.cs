@@ -277,6 +277,11 @@ namespace VirtualTabGroups.Plugin
             if (_stateStore == null) return;
             _root = _stateStore.Load();
 
+            // Older builds could add the same file twice (rename plus auto-track) and
+            // that duplicate survives in state.json. Offer a one-time cleanup, but
+            // never touch curated entries without the user's consent.
+            RemoveDuplicateEntriesIfConfirmed();
+
             // File entries are history. Saved paths and unsaved buffer names remain in
             // the user's curated tree even when a buffer did not survive the restart.
             var openPaths = GetAllOpenFilePaths() ?? Array.Empty<string>();
@@ -814,6 +819,62 @@ namespace VirtualTabGroups.Plugin
         {
             var openPaths = GetAllOpenFilePaths() ?? Array.Empty<string>();
             return openPaths.Any(p => string.Equals(p, path, StringComparison.OrdinalIgnoreCase));
+        }
+
+        /// <summary>
+        /// Entries repeating a path are pure noise: both rows open the same file, and
+        /// older builds could create them when a rename auto-tracked the reopened file.
+        /// Deleting the user's curated entries on our own is not acceptable, so the
+        /// cleanup happens only after an explicit confirmation; declining keeps the
+        /// tree exactly as it is for the rest of the session.
+        /// </summary>
+        private static void RemoveDuplicateEntriesIfConfirmed()
+        {
+            if (_root == null || _stateStore == null) return;
+
+            try
+            {
+                var duplicates = TreeQuery.FindRedundantFileEntries(_root);
+                if (duplicates.Count == 0) return;
+
+                var preview = string.Join("\n", duplicates.Take(5).Select(f => f.Path));
+                string message = "Virtual Tab Groups found " + duplicates.Count
+                    + (duplicates.Count == 1 ? " duplicate entry" : " duplicate entries")
+                    + " of the same file:\n\n" + preview
+                    + (duplicates.Count > 5 ? "\n…" : "")
+                    + "\n\nThe first entry of each file is kept and no file on disk is touched.";
+
+                var answer = System.Windows.Forms.MessageBox.Show(
+                    message,
+                    PluginName,
+                    System.Windows.Forms.MessageBoxButtons.YesNo,
+                    System.Windows.Forms.MessageBoxIcon.Question,
+                    System.Windows.Forms.MessageBoxDefaultButton.Button2);
+
+                if (answer != System.Windows.Forms.DialogResult.Yes)
+                {
+                    CrashLog.Write("OnNppReady: " + duplicates.Count
+                        + " duplicate entries kept by user choice");
+                    return;
+                }
+
+                int removed = 0;
+                foreach (var file in duplicates)
+                {
+                    var container = TreeMutator.FindContainer(_root, file);
+                    if (container != null && container.Children.Remove(file)) removed++;
+                }
+
+                if (removed > 0)
+                {
+                    _stateStore.MarkDirty(_root, _stateStore.LastSelectedId);
+                    CrashLog.Write("OnNppReady: removed " + removed + " duplicate entry(ies)");
+                }
+            }
+            catch (Exception ex)
+            {
+                CrashLog.WriteException("RemoveDuplicateEntriesIfConfirmed", ex);
+            }
         }
 
         /// <summary>

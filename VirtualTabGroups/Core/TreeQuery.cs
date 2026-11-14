@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace VirtualTabGroups.Core
 {
@@ -74,6 +75,38 @@ namespace VirtualTabGroups.Core
                 if (child is FolderNode sub && IsInside(sub, candidate)) return true;
             }
             return false;
+        }
+
+        /// <summary>
+        /// Returns the file entries that repeat a path already seen earlier in
+        /// depth-first order; the first entry of each path is the one to keep. An
+        /// entry may only be listed once, so removing every returned node leaves no
+        /// duplicate behind. Paths compare case-insensitively, matching the rest of
+        /// the Windows-oriented code.
+        /// </summary>
+        public static List<FileNode> FindRedundantFileEntries(FolderNode root)
+        {
+            var redundant = new List<FileNode>();
+            if (root == null) return redundant;
+
+            CollectRedundant(root, new HashSet<string>(StringComparer.OrdinalIgnoreCase), redundant);
+            return redundant;
+        }
+
+        private static void CollectRedundant(
+            FolderNode folder, HashSet<string> seen, List<FileNode> redundant)
+        {
+            foreach (var child in folder.Children)
+            {
+                if (child is FolderNode sub)
+                {
+                    CollectRedundant(sub, seen, redundant);
+                    continue;
+                }
+                if (!(child is FileNode file) || string.IsNullOrEmpty(file.Path)) continue;
+
+                if (!seen.Add(file.Path)) redundant.Add(file);
+            }
         }
     }
 }
