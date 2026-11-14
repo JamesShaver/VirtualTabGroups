@@ -294,6 +294,11 @@ namespace VirtualTabGroups.Plugin
                 _stateStore.MarkDirty(_root, _stateStore.LastSelectedId);
             }
 
+            // Session restore and files passed on the command line fire NPPN_FILEOPENED
+            // before NPPN_READY, when there is no tree yet. Sweep once here so no open
+            // tab is missing from the panel at startup.
+            ReconcileOpenDocuments();
+
             Theme = new ThemeManager(new Win32NppMessageSender(_nppData._nppHandle));
             Theme.Initialize();
 
@@ -585,6 +590,12 @@ namespace VirtualTabGroups.Plugin
             {
                 var path = GetPathForBufferId(bufferId);
                 if (string.IsNullOrEmpty(path)) return;
+
+                // The tree stays a superset of the open tabs: activating a saved
+                // document that is not tracked (opened at startup, or removed earlier)
+                // brings its entry back before the selection sync runs.
+                EnsureTrackedOpenDocument(path);
+
                 if (!_panel.IsHandleCreated) return;
                 _panel.SyncSelectionToPath(path);
             }
@@ -888,6 +899,61 @@ namespace VirtualTabGroups.Plugin
             // History is intentional. Do not purge unsaved entries merely because the
             // corresponding buffer did not survive a restart.
             return 0;
+        }
+
+        /// <summary>
+        /// Sweeps every open saved document and adds the ones the tree does not know
+        /// about yet. Startup is the main gap: NPPN_FILEOPENED fires before NPPN_READY
+        /// for restored sessions and command-line files, when the tree does not exist.
+        /// </summary>
+        private static void ReconcileOpenDocuments()
+        {
+            if (_root == null || _stateStore == null) return;
+
+            try
+            {
+                int added = 0;
+                foreach (var path in GetAllOpenFilePaths() ?? Array.Empty<string>())
+                {
+                    if (EnsureTrackedOpenDocument(path)) added++;
+                }
+
+                if (added > 0)
+                    CrashLog.Write("ReconcileOpenDocuments: added " + added
+                        + " open tab(s) that were missing from the tree");
+            }
+            catch (Exception ex)
+            {
+                CrashLog.WriteException("ReconcileOpenDocuments", ex);
+            }
+        }
+
+        /// <summary>
+        /// Adds one open saved document to the top of the tree when it is not tracked
+        /// anywhere yet. Unsaved buffers are handled by the delayed activation path,
+        /// because they have no path to compare.
+        /// </summary>
+        private static bool EnsureTrackedOpenDocument(string path)
+        {
+            if (_root == null || _stateStore == null) return false;
+            if (string.IsNullOrEmpty(path) || !System.IO.Path.IsPathRooted(path)) return false;
+            if (IsPathClaimed(_root, path)) return false;
+
+            try
+            {
+                var added = TreeMutator.AddFile(_root, path, atTop: true);
+                if (added == null) return false;
+
+                _stateStore.MarkDirty(_root, _stateStore.LastSelectedId);
+                _panel?.RefreshFromModel();
+                CrashLog.Write("EnsureTrackedOpenDocument: added open tab: " + path);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                CrashLog.WriteException("EnsureTrackedOpenDocument", ex);
+                return false;
+            }
         }
 
         /// <summary>

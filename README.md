@@ -142,6 +142,8 @@ When you close a file via Notepad++'s tab bar (clicking the `X` or `Ctrl+W`), it
 
 Use the panel's **Remove** command when you intentionally want to remove a history entry. Closing a tab alone never removes anything from the virtual tree.
 
+*Remove* only affects the panel — it never closes a tab. If the document stays open, activating it again puts its entry back, because the panel always reflects every open document.
+
 Closing a tab also clears its unsaved-changes dot: once Notepad++ has saved or discarded the document, the row stops claiming pending edits. Cancelling the close leaves the dot in place, because the document is still open with its changes.
 
 ### Saving and renaming
@@ -159,6 +161,10 @@ State written by older builds could contain the same file twice. On launch the p
 - Nothing on disk is renamed, moved or deleted in either case.
 
 The dialog only appears when duplicates actually exist, so it never interrupts a normal launch.
+
+### The tree is a superset of the open tabs
+
+Every saved file that is open in Notepad++ has an entry in the panel. A sweep at startup adds whatever a restored session or a command-line file left out, and activating a tab re-adds its entry if it was removed earlier while the document stayed open. The panel knows more than Notepad++ — closed documents stay as history — but never less.
 
 ---
 
