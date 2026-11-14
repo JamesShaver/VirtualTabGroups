@@ -45,6 +45,7 @@ The panel is **purely virtual**. It does not scan your disk, mirror folders, or 
 - **Remove** — removes the entry from the panel; **does not delete the file on disk**. A saved, unmodified file is removed without a dialog (it still exists on disk); unsaved buffers, files with unsaved changes and non-empty folders ask first. `Delete` removes the whole multi-selection behind one confirmation.
 - **Open / activate** — single-click a file to switch to its tab in Notepad++. If the file isn't currently open, it's reopened from disk. If it was an unsaved scratch buffer that's since been closed, you get a friendly "buffer no longer open" message instead of trying to create a file at a path that doesn't exist.
 - **Double-click rename** — double-click a saved file to rename the real file on disk after an explicit warning dialog; double-click an unsaved buffer to open Notepad++'s native Save As flow.
+- **Entries follow saving and renaming.** Save an unsaved buffer, use *Save As*, or rename a file — the panel entry takes the new name and path immediately instead of keeping the old label. Display aliases (`User(1).php`) are recalculated on the way, so same-named files stay unambiguous.
 - **Long press close and remove** — long-press a file to invoke Notepad++'s native close flow (including the save/discard/cancel prompt), then remove the entry only after the close succeeds.
 - **Groups are just groups** — clicking a folder selects it; the panel always shows the whole tree. Double-clicking a folder expands or collapses it. Replacing every open tab with a folder's files is an explicit, confirmed command (*Replace workspace with folder files…*).
 - **Reveal in Explorer** — right-click a file → opens Windows Explorer at the file's parent folder with the file highlighted. Disabled for unsaved buffers (nothing to reveal).
@@ -58,6 +59,7 @@ The panel is **purely virtual**. It does not scan your disk, mirror folders, or 
 - **Panel visibility survives restarts.** If the panel was open when you closed Notepad++, it reopens automatically next launch — same way the built-in docked panels behave. No need to bring it up from the Plugins menu every session. The panel registers itself with Notepad++'s docking manager early enough that the saved layout from `dockingMgr.xml` applies cleanly.
 - **Persistent file history.** Closing a file via Notepad++'s tab `X` keeps it in its virtual folder. Saved files can be reopened later by a single click; unsaved buffers remain as history entries and show a clear message if the original buffer no longer exists. Closing a tab never silently changes the user's virtual organization.
 - **Unsaved buffers can persist across sessions.** Add `new 17` or any other unsaved scratch buffer to a folder — useful for organizing work-in-progress alongside saved files. If Notepad++'s session backup is enabled (*Settings → Preferences → Backup → "Remember current session for next launch"*), the buffer comes back on relaunch with the same name and your virtual entry stays valid. With session backup off, the buffer may be unavailable after shutdown, but the history entry remains visible and explains why it cannot be reopened.
+- **Duplicate cleanup on launch.** If the state ever holds two entries for the same path (older builds could add one when a rename reopened the file), the panel lists them at startup and asks before removing the extra rows. Answering *No* keeps the tree exactly as it is, and no file on disk is touched either way.
 - **Corrupt-state recovery.** If something hand-edits or corrupts the state file, the plugin backs it up to `state.json.corrupt-yyyyMMdd-HHmmssZ-<random>` and starts with a clean tree rather than crashing. A dialog tells you where the backup landed.
 - **Future-version safety.** If a future version of the plugin writes a newer schema, an older plugin reading that file enters read-only mode for the session rather than overwriting newer data.
 
@@ -139,6 +141,24 @@ Files can be dragged from Windows Explorer into a folder or onto a file row. The
 When you close a file via Notepad++'s tab bar (clicking the `X` or `Ctrl+W`), it remains in its virtual folder. Double-click a saved file later to reopen it from disk. Unsaved buffers also remain visible as history; if the buffer was not restored by Notepad++'s session backup, opening it displays an explanation instead of creating a misleading file.
 
 Use the panel's **Remove** command when you intentionally want to remove a history entry. Closing a tab alone never removes anything from the virtual tree.
+
+Closing a tab also clears its unsaved-changes dot: once Notepad++ has saved or discarded the document, the row stops claiming pending edits. Cancelling the close leaves the dot in place, because the document is still open with its changes.
+
+### Saving and renaming
+
+The panel follows Notepad++, not the filesystem. Saving an unsaved buffer, using *Save As*, or renaming a file through Notepad++ updates the entry in place — name, path and alias — so the tree never shows a stale label for an open document.
+
+Renaming the file *outside* Notepad++ while its tab is open is a Notepad++ behaviour, not a panel one: the buffer keeps the old path, so the next `Ctrl+S` writes the original name again, and the entry stays consistent with the tab. Rename a file while its tab is closed and the entry becomes stale — clicking it reports that the file cannot be opened and offers *Locate on disk…* or *Remove entry*.
+
+### Duplicate entries
+
+State written by older builds could contain the same file twice. On launch the panel scans the loaded tree and, if it finds repeated paths, shows a confirmation listing them:
+
+- *Yes* removes the extra rows; the first entry of each file is kept.
+- *No* leaves the tree untouched for the whole session. The choice is recorded in `plugin.log`.
+- Nothing on disk is renamed, moved or deleted in either case.
+
+The dialog only appears when duplicates actually exist, so it never interrupts a normal launch.
 
 ---
 
@@ -224,7 +244,7 @@ For `x86`, swap the `/p:Platform=` value. **ARM64 is not currently supported** �
 dotnet test tests\VirtualTabGroups.Tests\VirtualTabGroups.Tests.csproj --nologo
 ```
 
-The test project covers the model layer (StateStore, TreeMutator, NodeJsonConverter, AliasResolver, theme manager, observer) — 83 unit tests at the time of writing. Panel decisions (add target, duplicate detection, removal confirmation, status text) live in `Core/` as pure functions so they are covered as well. UI behavior is verified manually inside Notepad++ since WinForms doesn't lend itself to automated testing without a real message loop.
+The test project covers the model layer (StateStore, TreeMutator, NodeJsonConverter, AliasResolver, theme manager, observer) — 94 unit tests at the time of writing. Panel decisions (add target, duplicate detection, removal confirmation, status text) live in `Core/` as pure functions so they are covered as well. UI behavior is verified manually inside Notepad++ since WinForms doesn't lend itself to automated testing without a real message loop.
 
 ### Local install for testing
 
