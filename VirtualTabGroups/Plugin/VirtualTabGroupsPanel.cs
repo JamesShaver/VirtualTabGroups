@@ -1117,29 +1117,27 @@ namespace VirtualTabGroups.Plugin
                                 {
                                     _statusLabel.Text = "Buffer saved: " + file.Name;
                                 }
+                                else
+                                {
+                                    // Silence here looked like a broken button: a dead
+                                    // unsaved buffer simply has nothing to locate.
+                                    CrashLog.Write("Locate: unsaved entry '" + file.Path
+                                        + "' has no buffer and nothing on disk");
+                                    MessageBox.Show(
+                                        this,
+                                        "There is nothing on disk to locate: '" + file.Name
+                                            + "' existed only as an unsaved buffer.\n\n"
+                                            + "Remove the entry, or add the document again once it exists.",
+                                        "Locate on disk",
+                                        MessageBoxButtons.OK,
+                                        MessageBoxIcon.Information);
+                                    _statusLabel.Text = "Nothing to locate for '" + file.Name
+                                        + "' — the buffer was never saved.";
+                                }
                             }
                             else
                             {
-                                using (var dialog2 = new OpenFileDialog
-                                {
-                                    Title = "Locate '" + file.Name + "'",
-                                    InitialDirectory = SafeInitialDirectory(file.Path),
-                                    CheckFileExists = true
-                                })
-                                {
-                                    if (dialog2.ShowDialog(this) == DialogResult.OK
-                                        && !string.Equals(dialog2.FileName, file.Path, StringComparison.OrdinalIgnoreCase))
-                                    {
-                                        file.Path = dialog2.FileName;
-                                        file.Name = System.IO.Path.GetFileName(dialog2.FileName);
-                                        var node = FindByModelId(_tree.Nodes, file.Id);
-                                        if (node != null) node.Text = file.Name;
-                                        _stateStore?.MarkDirty(_root, _currentSelectedId);
-                                        UpdateChrome();
-                                        PluginMain.OpenFileUnchecked(file.Path);
-                                        _statusLabel.Text = "Entry re-linked: " + file.Name;
-                                    }
-                                }
+                                LocateSavedFile(file);
                             }
                             break;
                     }
@@ -1149,6 +1147,68 @@ namespace VirtualTabGroups.Plugin
             {
                 ReportError("Open entry", ex);
             }
+        }
+
+        /// <summary>
+        /// Picks a new file for an entry whose file is gone and re-links the entry to
+        /// it. The picker is owned by Notepad++'s main window: owned by the docked
+        /// panel it could open behind the frame, which looked like the click did
+        /// nothing at all.
+        /// </summary>
+        private void LocateSavedFile(FileNode file)
+        {
+            CrashLog.Write("LocateSavedFile: picker for '" + file.Path + "'");
+
+            using (var picker = new OpenFileDialog
+            {
+                Title = "Locate '" + file.Name + "'",
+                Filter = "All files (*.*)|*.*",
+                FileName = file.Name,
+                CheckFileExists = true,
+                RestoreDirectory = false
+            })
+            {
+                var startDir = SafeInitialDirectory(file.Path);
+                if (!string.IsNullOrEmpty(startDir)) picker.InitialDirectory = startDir;
+
+                var owner = new NppOwnerWindow(PluginMain.NppHandle);
+                if (picker.ShowDialog(owner) != DialogResult.OK) return;
+
+                var chosen = picker.FileName;
+                if (string.IsNullOrEmpty(chosen)) return;
+
+                if (!string.Equals(chosen, file.Path, StringComparison.OrdinalIgnoreCase))
+                {
+                    var container = _root != null
+                        ? VirtualTabGroups.Core.TreeMutator.FindContainer(_root, file)
+                        : null;
+                    if (container == null || !file.Relink(container, chosen))
+                    {
+                        file.Path = chosen;
+                        file.Name = System.IO.Path.GetFileName(chosen);
+                    }
+
+                    var node = FindByModelId(_tree.Nodes, file.Id);
+                    if (node != null) node.Text = file.Name;
+                    _stateStore?.MarkDirty(_root, _currentSelectedId);
+                    UpdateChrome();
+                }
+
+                PluginMain.OpenFileUnchecked(file.Path);
+                _statusLabel.Text = "Entry re-linked: " + file.Name;
+                CrashLog.Write("LocateSavedFile: '" + file.Path + "' re-linked and opened");
+            }
+        }
+
+        /// <summary>
+        /// IWin32Window wrapper so native dialogs can be owned by Notepad++'s main
+        /// window instead of the docked panel form.
+        /// </summary>
+        private sealed class NppOwnerWindow : IWin32Window
+        {
+            public NppOwnerWindow(IntPtr handle) { Handle = handle; }
+
+            public IntPtr Handle { get; }
         }
 
         private static string SafeInitialDirectory(string path)
