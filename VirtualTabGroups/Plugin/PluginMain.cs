@@ -209,6 +209,12 @@ namespace VirtualTabGroups.Plugin
                         OnActiveBufferChanged(notification.nmhdr.idFrom);
                         break;
 
+                    case NppNotif.NPPN_FILEBEFORESAVE:
+                        // Save As replaces the buffer path silently, so the old one has
+                        // to be captured before the write happens.
+                        RememberPathBeforeSave(notification.nmhdr.idFrom);
+                        break;
+
                     case NppNotif.NPPN_FILESAVED:
                         // A save can change the file name (Save As from the main window)
                         // and always confirms the on-disk path is current. Also syncs
@@ -775,7 +781,14 @@ namespace VirtualTabGroups.Plugin
             try
             {
                 File.Move(path, renamedPath);
-                if (wasOpen) OpenFileUnchecked(renamedPath);
+                if (wasOpen)
+                {
+                    // Reopening raises NPPN_FILEOPENED; the caller relinks the
+                    // existing entry afterwards, so auto-tracking stays off here.
+                    SuppressAutoTrack = true;
+                    try { OpenFileUnchecked(renamedPath); }
+                    finally { SuppressAutoTrack = false; }
+                }
                 return true;
             }
             catch (Exception ex)
@@ -827,6 +840,14 @@ namespace VirtualTabGroups.Plugin
             {
                 var path = GetPathForBufferId(bufferId);
                 if (string.IsNullOrEmpty(path) || !System.IO.Path.IsPathRooted(path)) return;
+
+                // A reopen after the plugin's own rename must not add a second entry;
+                // the existing one is relinked by the caller.
+                if (SuppressAutoTrack)
+                {
+                    CrashLog.Write("OnFileOpened: auto-track suppressed for " + path);
+                    return;
+                }
 
                 // Already tracked anywhere in the tree → nothing to add.
                 if (IsPathClaimed(_root, path)) return;
@@ -970,6 +991,22 @@ namespace VirtualTabGroups.Plugin
         }
 
         /// <summary>
+        /// Paths captured at NPPN_FILEBEFORESAVE, keyed by buffer ID. The moment
+        /// before the write is the only point where an entry can still be matched to
+        /// its own buffer: afterwards Notepad++ reports just the new path, so a buffer
+        /// saved from an unsaved name ("new 1") or a Save As that keeps the original
+        /// file could never be relinked.
+        /// </summary>
+        private static readonly Dictionary<IntPtr, string> _pathsBeforeSave =
+            new Dictionary<IntPtr, string>();
+
+        /// <summary>
+        /// Set while the plugin reopens a file it renamed itself: NPPN_FILEOPENED must
+        /// not auto-track that buffer as an additional entry.
+        /// </summary>
+        internal static bool SuppressAutoTrack { get; set; }
+
+        /// <summary>
         /// Syncs virtual history entries with Notepad++ after the user saved or
         /// renamed a file from the main window. Every FileNode whose stored path no
         /// longer exists on disk but whose buffer is still open with a new path gets
@@ -984,11 +1021,20 @@ namespace VirtualTabGroups.Plugin
                 var currentPath = GetPathForBufferId(bufferId);
                 if (string.IsNullOrEmpty(currentPath) || !File.Exists(currentPath)) return;
 
+                string previousPath = null;
+                bool hadPrevious = _pathsBeforeSave.TryGetValue(bufferId, out previousPath);
+                if (hadPrevious) _pathsBeforeSave.Remove(bufferId);
+
                 var openPaths = new HashSet<string>(
                     GetAllOpenFilePaths() ?? Array.Empty<string>(),
                     StringComparer.OrdinalIgnoreCase);
 
-                bool changed = SyncNodePaths(_root, openPaths);
+                // Exact relink first: the captured pre-save path identifies the entry
+                // even when the buffer had no path yet or the old file still exists,
+                // which is precisely when the on-disk heuristic below gives up.
+                bool changed = RelinkEntry(previousPath, currentPath);
+                if (!changed) changed = SyncNodePaths(_root, openPaths);
+
                 if (changed)
                 {
                     _stateStore.MarkDirty(_root, _stateStore.LastSelectedId);
@@ -998,7 +1044,9 @@ namespace VirtualTabGroups.Plugin
 
                 // The saved buffer is clean even when no history path needed syncing.
                 // Keep this outside the changed block so ordinary Ctrl+S also clears
-                // the indicator.
+                // the indicator. A key for the old path/name must not linger either.
+                if (hadPrevious && !SamePath(previousPath, currentPath))
+                    _dirtyTracker.SetDirty(previousPath, false);
                 _dirtyTracker.SetDirty(currentPath, false);
 
                 CrashLog.Write("OnFileSavedOrRenamed: synced entries to current open paths (bufferId="
@@ -1009,6 +1057,54 @@ namespace VirtualTabGroups.Plugin
                 CrashLog.WriteException("OnFileSavedOrRenamed", ex);
             }
         }
+
+        private static void RememberPathBeforeSave(IntPtr bufferId)
+        {
+            if (_root == null || bufferId == IntPtr.Zero) return;
+
+            try
+            {
+                var path = GetPathForBufferId(bufferId);
+                if (string.IsNullOrEmpty(path)) _pathsBeforeSave.Remove(bufferId);
+                else _pathsBeforeSave[bufferId] = path;
+            }
+            catch (Exception ex)
+            {
+                CrashLog.WriteException("RememberPathBeforeSave", ex);
+            }
+        }
+
+        /// <summary>
+        /// Moves the entry recorded at <paramref name="previousPath"/> to the path its
+        /// buffer now has. Covers unsaved buffers that just got a real path and Save As
+        /// onto a new name while the original file stays on disk.
+        /// </summary>
+        private static bool RelinkEntry(string previousPath, string currentPath)
+        {
+            if (string.IsNullOrEmpty(previousPath) || string.IsNullOrEmpty(currentPath)) return false;
+            if (SamePath(previousPath, currentPath)) return false;
+
+            var file = TreeQuery.FindFileByPath(_root, previousPath);
+            if (file == null) return false;
+
+            // Never leave two entries pointing at the same file.
+            var existing = TreeQuery.FindFileByPath(_root, currentPath);
+            if (existing != null && !ReferenceEquals(existing, file))
+            {
+                CrashLog.Write("RelinkEntry: '" + currentPath
+                    + "' is already tracked — entry left unchanged");
+                return false;
+            }
+
+            var folder = TreeMutator.FindContainer(_root, file);
+            if (folder == null || !file.Relink(folder, currentPath)) return false;
+
+            CrashLog.Write("RelinkEntry: '" + previousPath + "' -> '" + file.Path + "'");
+            return true;
+        }
+
+        private static bool SamePath(string left, string right)
+            => string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
 
         /// <summary>
         /// Depth-first walk: for every FileNode whose Path is NOT among currently open
@@ -1066,13 +1162,13 @@ namespace VirtualTabGroups.Plugin
                     continue;
                 }
 
-                var adopted = candidates[0];
-                file.Path = adopted;
-                // Re-resolve the label instead of resetting it to the file name: an
-                // alias that disambiguated same-named files must survive the relink.
-                file.Name = AliasResolver.Resolve(folder, adopted);
-                changed = true;
-                CrashLog.Write("SyncNodePaths: '" + file.Name + "' adopted new path " + adopted);
+                // Relink re-resolves the label instead of resetting it to the file
+                // name: an alias that disambiguated same-named files must survive.
+                if (file.Relink(folder, candidates[0]))
+                {
+                    changed = true;
+                    CrashLog.Write("SyncNodePaths: '" + file.Name + "' adopted new path " + file.Path);
+                }
             }
 
             return changed;

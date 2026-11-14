@@ -849,8 +849,16 @@ namespace VirtualTabGroups.Plugin
 
                 if (!changed || string.IsNullOrEmpty(updatedPath)) return false;
 
-                file.Path = updatedPath;
-                file.Name = System.IO.Path.GetFileName(updatedPath);
+                // Relink keeps alias handling in the model: a renamed sibling may
+                // free or need a "Name(1).ext" label.
+                var container = _root != null
+                    ? VirtualTabGroups.Core.TreeMutator.FindContainer(_root, file)
+                    : null;
+                if (container == null || !file.Relink(container, updatedPath))
+                {
+                    file.Path = updatedPath;
+                    file.Name = System.IO.Path.GetFileName(updatedPath);
+                }
                 if (node != null) node.Text = file.Name;
                 _stateStore?.MarkDirty(_root, _currentSelectedId);
                 UpdateChrome();
